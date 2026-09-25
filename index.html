@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#123b2a">
+<title>Terra Santa — Gestão Agrícola</title>
+<style>
+:root{--green:#123b2a;--green2:#1f6a45;--light:#f4f7f3;--card:#fff;--text:#203126;--muted:#718077;--line:#e1e8e2;--accent:#c7a35a;--danger:#b74b42}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--light);color:var(--text)}
+button,input,select,textarea{font:inherit}button{cursor:pointer}
+.app{min-height:100vh}.top{height:70px;background:var(--green);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;position:sticky;top:0;z-index:5}
+.logo{width:46px;height:46px;border-radius:12px;background:#fff;color:var(--green);display:grid;place-items:center;font-weight:800;font-size:22px}.brand b{display:block;font-size:19px}.brand span{font-size:11px;opacity:.72}
+.menu{display:flex;gap:8px;overflow:auto;padding:12px 14px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:70px;z-index:4}.menu button{border:0;background:#eef3ef;color:var(--green);border-radius:12px;padding:9px 12px;white-space:nowrap}.menu button.active{background:var(--green);color:#fff}
+main{max-width:1180px;margin:auto;padding:18px}.hero{background:linear-gradient(135deg,#1c5b3c,#8cae83);color:#fff;border-radius:20px;padding:24px;margin-bottom:16px}.hero h1{margin:0 0 6px;font-size:28px}.hero p{margin:0;opacity:.86}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 2px 10px #17352208}.metric .num{font-size:25px;font-weight:800;margin-top:5px}.muted{color:var(--muted);font-size:13px}
+.section{margin-top:18px}.section h2{font-size:18px;margin:0 0 12px}.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.action{border:1px solid var(--line);background:#fff;border-radius:15px;padding:16px;text-align:left;color:var(--text)}.action strong{display:block;margin-top:8px}.icon{font-size:24px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px}.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.primary{background:var(--green);color:#fff;border:0;border-radius:11px;padding:10px 14px}.secondary{background:#eef3ef;color:var(--green);border:0;border-radius:11px;padding:10px 14px}.danger{background:#fbeceb;color:var(--danger);border:0;border-radius:11px;padding:8px 11px}
+table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);font-size:14px}
+.form{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}.full{grid-column:1/-1}
+.empty{padding:25px;text-align:center;color:var(--muted)}
+@media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.actions{grid-template-columns:repeat(2,1fr)}main{padding:12px}.hero{padding:18px}.form{grid-template-columns:1fr}.full{grid-column:auto}.top{height:64px}.menu{top:64px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top"><div class="logo">TS</div><div class="brand"><b>Terra Santa</b><span>Gestão Agrícola</span></div></header>
+<nav class="menu" id="menu"></nav>
+<main id="app"></main>
+</div>
+<script>
+const modules=[
+["inicio","🏠","Início"],["fazendas","🏡","Fazendas"],["talhoes","🌱","Talhões"],["safras","📅","Safras"],["aplicacoes","💧","Aplicações"],["plantio","🌾","Plantio"],["maquinas","🚜","Máquinas"],["diesel","⛽","Diesel"],["estoque","📦","Estoque"],["custos","💰","Custos"],["mapas","🗺️","Mapas"],["relatorios","📊","Relatórios"]
+];
+let state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');
+function save(){localStorage.setItem("terraSanta",JSON.stringify(state))}
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function nav(active){document.getElementById("menu").innerHTML=modules.map(m=>`<button class="${m[0]===active?"active":""}" onclick="go('${m[0]}')">${m[1]} ${m[2]}</button>`).join("")}
+function go(page){location.hash=page}
+function dashboard(){
+return `<div class="hero"><h1>Bom dia! 🌱</h1><p>Painel da sua operação agrícola</p></div>
+<div class="grid">
+<div class="card metric"><div class="muted">Área total</div><div class="num">1.050 ha</div></div>
+<div class="card metric"><div class="muted">Talhões</div><div class="num">${state.talhoes.length}</div></div>
+<div class="card metric"><div class="muted">Safras</div><div class="num">${state.safras.length}</div></div>
+<div class="card metric"><div class="muted">Aplicações</div><div class="num">${state.aplicacoes.length}</div></div>
+</div>
+<div class="section"><h2>Acesso rápido</h2><div class="actions">
+${[["🌱","talhoes","Novo Talhão"],["💧","aplicacoes","Nova Aplicação"],["🌾","plantio","Registrar Plantio"],["📦","estoque","Estoque"]].map(x=>`<button class="action" onclick="go('${x[1]}')"><span class="icon">${x[0]}</span><strong>${x[2]}</strong><span class="muted">Acessar módulo</span></button>`).join("")}
+</div></div>
+<div class="panel"><div class="row"><div><b>Próxima etapa</b><div class="muted">Cadastre a fazenda e depois seus talhões.</div></div><button class="primary" onclick="go('fazendas')">Abrir Fazendas</button></div></div>`;
+}
+function listPage(type,title,desc,button,formHtml,rows,headers){
+return `<div class="row"><div><h1 style="margin:0">${title}</h1><div class="muted">${desc}</div></div><button class="primary" onclick="toggleForm('${type}')">${button}</button></div>
+<div id="${type}Form" class="panel" style="display:none">${formHtml}</div>
+<div class="panel"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum cadastro ainda.</td></tr>`}</tbody></table></div>`;
+}
+function toggleForm(id){let e=document.getElementById(id+"Form");if(e)e.style.display=e.style.display==="none"?"block":"none"}
+function fazendas(){
+let rows=state.fazendas.map((f,i)=>`<tr><td>${esc(f.nome)}</td><td>${esc(f.area)} ha</td><td>${esc(f.local||"-")}</td><td>Ativa</td><td><button class="danger" onclick="del('fazendas',${i})">Excluir</button></td></tr>`).join("");
+return listPage("fazendas","Fazendas","Cadastre as propriedades da operação.","+ Nova Fazenda",`<form onsubmit="addFarm(event)"><div class="form"><div class="field"><label>Nome da fazenda *</label><input id="fnome" required placeholder="Ex.: Fazenda Terra Santa"></div><div class="field"><label>Área total (ha) *</label><input id="farea" type="number" step="0.01" required value="1050"></div><div class="field full"><label>Município / UF</label><input id="flocal" placeholder="Ex.: Sinop - MT"></div></div><br><button class="primary">Salvar fazenda</button></form>`,rows,["Fazenda","Área","Localização","Status",""])}
+function talhoes(){
+let farms=state.fazendas.length?state.fazendas.map(f=>`<option>${esc(f.nome)}</option>`).join(""):`<option>Fazenda Terra Santa</option>`;
+let rows=state.talhoes.map((t,i)=>`<tr><td>${esc(t.nome)}</td><td>${esc(t.area)} ha</td><td>${esc(t.cultura||"-")}</td><td>${esc(t.safra||"-")}</td><td><button class="danger" onclick="del('talhoes',${i})">Excluir</button></td></tr>`).join("");
+return listPage("talhoes","Talhões","O talhão será o centro para plantio, aplicações, custos, produtividade e mapas.","+ Novo Talhão",`<form onsubmit="addTalhao(event)"><div class="form"><div class="field"><label>Nome / número *</label><input id="tnome" required placeholder="Talhão 01"></div><div class="field"><label>Área (ha) *</label><input id="tarea" type="number" step="0.01" required></div><div class="field"><label>Fazenda</label><select id="tfarm">${farms}</select></div><div class="field"><label>Cultura</label><select id="tcultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Safra</label><input id="tsafra" placeholder="2026/27"></div><div class="field"><label>Variedade / híbrido</label><input id="tvar" placeholder="Opcional"></div><div class="field full"><label>Observações</label><textarea id="tobs" rows="3"></textarea></div></div><br><button class="primary">Salvar talhão</button></form>`,rows,["Talhão","Área","Cultura","Safra",""])}
+function safras(){return `<div class="hero"><h1>📅 Safras</h1><p>Estrutura preparada para vincular talhões, operações, custos e resultados por safra.</p></div><div class="panel"><b>Próximo passo</b><p class="muted">O cadastro funcional de safra será conectado aos talhões e culturas na próxima etapa.</p></div>`}
+function aplicacoes(){
+let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>Cadastre um talhão primeiro</option>";
+let rows=state.aplicacoes.map((a,i)=>`<tr><td>${esc(a.data)}</td><td>${esc(a.talhao)}</td><td>${esc(a.produto)}</td><td>${esc(a.dose)}</td><td><button class="danger" onclick="del('aplicacoes',${i})">Excluir</button></td></tr>`).join("");
+return listPage("aplicacoes","Aplicações","Registre pulverizações e vincule ao talhão.","+ Nova Aplicação",`<form onsubmit="addAplicacao(event)"><div class="form"><div class="field"><label>Data *</label><input id="adata" type="date" required></div><div class="field"><label>Talhão *</label><select id="atalhao">${opts}</select></div><div class="field"><label>Produto *</label><input id="aproduto" required placeholder="Produto"></div><div class="field"><label>Dose</label><input id="adose" placeholder="Ex.: 0,5 L/ha"></div><div class="field full"><label>Observações</label><textarea id="aobs" rows="2"></textarea></div></div><br><button class="primary">Salvar aplicação</button></form>`,rows,["Data","Talhão","Produto","Dose",""])}
+function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}</h1><p>${desc}</p></div><div class="grid">${["Cadastros","Operações","Histórico","Indicadores"].map(x=>`<div class="card"><b>${x}</b><p class="muted">Módulo preparado para a próxima etapa.</p></div>`).join("")}</div>`}
+function addFarm(e){e.preventDefault();state.fazendas.push({nome:fnome.value,area:farea.value,local:flocal.value});save();go("fazendas")}
+function addTalhao(e){e.preventDefault();state.talhoes.push({nome:tnome.value,area:tarea.value,fazenda:tfarm.value,cultura:tcultura.value,safra:tsafra.value,variedade:tvar.value,obs:tobs.value});save();go("talhoes")}
+function addAplicacao(e){e.preventDefault();state.aplicacoes.push({data:adata.value,talhao:atalhao.value,produto:aproduto.value,dose:adose.value,obs:aobs.value});save();go("aplicacoes")}
+function del(type,i){if(confirm("Excluir este registro?")){state[type].splice(i,1);save();go(type)}}
+function render(){
+let page=location.hash.slice(1)||"inicio";nav(page);
+let el=document.getElementById("app");
+if(page==="inicio")el.innerHTML=dashboard();
+else if(page==="fazendas")el.innerHTML=fazendas();
+else if(page==="talhoes")el.innerHTML=talhoes();
+else if(page==="safras")el.innerHTML=safras();
+else if(page==="aplicacoes")el.innerHTML=aplicacoes();
+else {let m=modules.find(x=>x[0]===page)||modules[0];el.innerHTML=generic(m[2],m[1],"Estrutura do módulo Terra Santa.");}
+}
+window.addEventListener("hashchange",render);render();
+</script>
+</body></html>
