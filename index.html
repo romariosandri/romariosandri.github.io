@@ -94,7 +94,10 @@ function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}
 async function addFarm(e){
   e.preventDefault();
 
-  try {
+ const fname = document.getElementById("fname");
+const farea = document.getElementById("farea");
+const flocal = document.getElementById("flocal"); 
+ try {
     const novaFazenda = {
       nome: fname.value,
       area_total: Number(farea.value),
