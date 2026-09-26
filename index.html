@@ -39,16 +39,21 @@ const SUPABASE_KEY = 'sb_publishable_tkrE_2Tg8KY0JmGAbxshXg_SxlRepgM';
 }; 
 
 
-async function supabaseRequest(table, options = '') {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}${options}`, {
-    headers: supabaseHeaders
+async function supabaseRequest(table, options = {}) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    ...options,
+    headers: {
+      ...supabaseHeaders,
+      ...(options.headers || {})
+    }
   });
 
   if (!response.ok) {
     throw new Error(await response.text());
   }
 
-  return response.json();
+  const texto = await response.text();
+  return texto ? JSON.parse(texto) : null;
 }
 
   const modules=[
@@ -110,7 +115,7 @@ async function addFarm(e){
   };
 
   try {
-    await supabaseRequest("fazendas", {
+await supabaseRequest("fazendas", {
       method: "POST",
       headers: {
         "Prefer": "return=representation"
