@@ -31,39 +31,33 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
 <script>
 const SUPABASE_URL = 'https://tzlirbhljgqujrvgptfs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_tkrE_2Tg8KY0JmGAbxshXg_SxlRepgM';
-
- const supabaseHeaders = {
+const supabaseHeaders = {
   'apikey': SUPABASE_KEY,
   'Authorization': 'Bearer ' + SUPABASE_KEY,
   'Content-Type': 'application/json'
-}; 
-
+};
 
 async function supabaseRequest(table, options = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     ...options,
-    headers: {
-      ...supabaseHeaders,
-      ...(options.headers || {})
-    }
+    headers: { ...supabaseHeaders, ...(options.headers || {}) }
   });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
+  if (!response.ok) throw new Error(await response.text());
   const texto = await response.text();
   return texto ? JSON.parse(texto) : null;
 }
 
-  const modules=[
+const modules=[
 ["inicio","🏠","Início"],["fazendas","🏡","Fazendas"],["talhoes","🌱","Talhões"],["safras","📅","Safras"],["aplicacoes","💧","Aplicações"],["plantio","🌾","Plantio"],["maquinas","🚜","Máquinas"],["diesel","⛽","Diesel"],["estoque","📦","Estoque"],["custos","💰","Custos"],["mapas","🗺️","Mapas"],["relatorios","📊","Relatórios"]
 ];
 let state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');
 function save(){localStorage.setItem("terraSanta",JSON.stringify(state))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function nav(active){document.getElementById("menu").innerHTML=modules.map(m=>`<button class="${m[0]===active?"active":""}" onclick="go('${m[0]}')">${m[1]} ${m[2]}</button>`).join("")}
-function go(page){location.hash=page}
+function go(page){
+  if(location.hash === "#"+page){ render(); }
+  else { location.hash=page; }
+}
 function dashboard(){
 return `<div class="hero"><h1>Bom dia! 🌱</h1><p>Painel da sua operação agrícola</p></div>
 <div class="grid">
@@ -98,44 +92,15 @@ return listPage("aplicacoes","Aplicações","Registre pulverizações e vincule 
 function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}</h1><p>${desc}</p></div><div class="grid">${["Cadastros","Operações","Histórico","Indicadores"].map(x=>`<div class="card"><b>${x}</b><p class="muted">Módulo preparado para a próxima etapa.</p></div>`).join("")}</div>`}
 async function addFarm(e){
   e.preventDefault();
-
-  const fnome = document.getElementById("fnome");
-  const farea = document.getElementById("farea");
-  const flocal = document.getElementById("flocal");
-
-  if (!fnome || !farea || !flocal) {
-    alert("Erro: não encontrei os campos da fazenda.");
-    return;
-  }
-
-  const novaFazenda = {
-    nome: fnome.value.trim(),
-    area_total: Number(farea.value),
-    municipio: flocal.value.trim()
-  };
-
+  const fnome=document.getElementById("fnome"), farea=document.getElementById("farea"), flocal=document.getElementById("flocal");
+  const novaFazenda={nome:fnome.value.trim(),area_total:Number(farea.value),municipio:flocal.value.trim()};
   try {
-await supabaseRequest("fazendas", {
-      method: "POST",
-      headers: {
-        "Prefer": "return=representation"
-      },
-      body: JSON.stringify(novaFazenda)
-    });
-
-    state.fazendas.push({
-      nome: novaFazenda.nome,
-      area: novaFazenda.area_total,
-      local: novaFazenda.municipio
-    });
-
+    await supabaseRequest("fazendas",{method:"POST",headers:{"Prefer":"return=representation"},body:JSON.stringify(novaFazenda)});
+    state.fazendas.push({nome:novaFazenda.nome,area:novaFazenda.area_total,local:novaFazenda.municipio});
     save();
     alert("Fazenda salva com sucesso!");
-    document.getElementById("app").innerHTML = fazendas();
-
-  } catch (erro) {
-    alert("Erro ao salvar a fazenda: " + erro.message);
-  }
+    go("fazendas");
+  } catch(erro){ alert("Erro ao salvar a fazenda: "+erro.message); }
 }
 function addTalhao(e){e.preventDefault();state.talhoes.push({nome:tnome.value,area:tarea.value,fazenda:tfarm.value,cultura:tcultura.value,safra:tsafra.value,variedade:tvar.value,obs:tobs.value});save();go("talhoes")}
 function addAplicacao(e){e.preventDefault();state.aplicacoes.push({data:adata.value,talhao:atalhao.value,produto:aproduto.value,dose:adose.value,obs:aobs.value});save();go("aplicacoes")}
