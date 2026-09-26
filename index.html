@@ -91,7 +91,38 @@ let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<opt
 let rows=state.aplicacoes.map((a,i)=>`<tr><td>${esc(a.data)}</td><td>${esc(a.talhao)}</td><td>${esc(a.produto)}</td><td>${esc(a.dose)}</td><td><button class="danger" onclick="del('aplicacoes',${i})">Excluir</button></td></tr>`).join("");
 return listPage("aplicacoes","Aplicações","Registre pulverizações e vincule ao talhão.","+ Nova Aplicação",`<form onsubmit="addAplicacao(event)"><div class="form"><div class="field"><label>Data *</label><input id="adata" type="date" required></div><div class="field"><label>Talhão *</label><select id="atalhao">${opts}</select></div><div class="field"><label>Produto *</label><input id="aproduto" required placeholder="Produto"></div><div class="field"><label>Dose</label><input id="adose" placeholder="Ex.: 0,5 L/ha"></div><div class="field full"><label>Observações</label><textarea id="aobs" rows="2"></textarea></div></div><br><button class="primary">Salvar aplicação</button></form>`,rows,["Data","Talhão","Produto","Dose",""])}
 function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}</h1><p>${desc}</p></div><div class="grid">${["Cadastros","Operações","Histórico","Indicadores"].map(x=>`<div class="card"><b>${x}</b><p class="muted">Módulo preparado para a próxima etapa.</p></div>`).join("")}</div>`}
-function addFarm(e){e.preventDefault();state.fazendas.push({nome:fnome.value,area:farea.value,local:flocal.value});save();go("fazendas")}
+async function addFarm(e){
+  e.preventDefault();
+
+  try {
+    const novaFazenda = {
+      nome: fname.value,
+      area_total: Number(farea.value),
+      municipio: flocal.value
+    };
+
+    await supabaseRequest("fazendas", {
+      method: "POST",
+      headers: {
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(novaFazenda)
+    });
+
+    state.fazendas.push({
+      nome: fname.value,
+      area: farea.value,
+      local: flocal.value
+    });
+
+    save();
+    alert("Fazenda salva com sucesso!");
+    go("fazendas");
+
+  } catch (erro) {
+    alert("Erro ao salvar a fazenda: " + erro.message);
+  }
+}
 function addTalhao(e){e.preventDefault();state.talhoes.push({nome:tnome.value,area:tarea.value,fazenda:tfarm.value,cultura:tcultura.value,safra:tsafra.value,variedade:tvar.value,obs:tobs.value});save();go("talhoes")}
 function addAplicacao(e){e.preventDefault();state.aplicacoes.push({data:adata.value,talhao:atalhao.value,produto:aproduto.value,dose:adose.value,obs:aobs.value});save();go("aplicacoes")}
 function del(type,i){if(confirm("Excluir este registro?")){state[type].splice(i,1);save();go(type)}}
