@@ -131,7 +131,7 @@ await supabaseRequest("fazendas", {
 
     save();
     alert("Fazenda salva com sucesso!");
-    go("fazendas");
+    document.getElementById("app").innerHTML = fazendas();
 
   } catch (erro) {
     alert("Erro ao salvar a fazenda: " + erro.message);
