@@ -94,16 +94,22 @@ function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}
 async function addFarm(e){
   e.preventDefault();
 
- const fname = document.getElementById("fname");
-const farea = document.getElementById("farea");
-const flocal = document.getElementById("flocal"); 
- try {
-    const novaFazenda = {
-      nome: fname.value,
-      area_total: Number(farea.value),
-      municipio: flocal.value
-    };
+  const fnome = document.getElementById("fnome");
+  const farea = document.getElementById("farea");
+  const flocal = document.getElementById("flocal");
 
+  if (!fnome || !farea || !flocal) {
+    alert("Erro: não encontrei os campos da fazenda.");
+    return;
+  }
+
+  const novaFazenda = {
+    nome: fnome.value.trim(),
+    area_total: Number(farea.value),
+    municipio: flocal.value.trim()
+  };
+
+  try {
     await supabaseRequest("fazendas", {
       method: "POST",
       headers: {
@@ -113,9 +119,9 @@ const flocal = document.getElementById("flocal");
     });
 
     state.fazendas.push({
-      nome: fname.value,
-      area: farea.value,
-      local: flocal.value
+      nome: novaFazenda.nome,
+      area: novaFazenda.area_total,
+      local: novaFazenda.municipio
     });
 
     save();
