@@ -25,6 +25,10 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
 .cameraBox{border:1px dashed var(--line);border-radius:14px;padding:12px;margin:12px 0;background:#fafcf9}
 .cameraPreview{max-width:100%;max-height:260px;border-radius:10px;margin-top:10px;display:none}
 .ocrStatus{font-size:13px;color:var(--muted);margin-top:8px}
+.notaReview{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.notaItem{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;background:#fff}
+.notaGrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px}
+@media(max-width:760px){.notaGrid{grid-template-columns:1fr 1fr}.notaGrid .produto{grid-column:1/-1}}
 @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.actions{grid-template-columns:repeat(2,1fr)}main{padding:12px}.hero{padding:18px}.form{grid-template-columns:1fr}.full{grid-column:auto}.top{height:64px}.menu{top:64px}}
 .badge{display:inline-block;background:#eef3ef;color:var(--green);border-radius:999px;padding:4px 8px;font-size:12px}.money{font-weight:700}.summary{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.summary .card{min-width:150px;flex:1}
 </style>
@@ -127,8 +131,9 @@ function maquinas(){state.maquinas=state.maquinas||[];let rows=state.maquinas.ma
 function diesel(){state.diesel=state.diesel||[];let maq=state.maquinas?.map(m=>`<option>${esc(m.nome)}</option>`).join("")||"<option>-</option>";let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>-</option>";let rows=state.diesel.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.maquina)}</td><td>${esc(x.litros)} L</td><td>${esc(x.talhao||"-")}</td><td><button class="secondary" onclick="editar('diesel',${i})">Editar</button> <button class="danger" onclick="del('diesel',${i})">Excluir</button></td></tr>`).join("");return listPage("diesel","Diesel","Controle abastecimentos e vincule ao talhão quando desejar.","+ Abastecimento",`<form onsubmit="addDiesel(event)"><div class="form"><div class="field"><label>Data *</label><input id="ddata" type="date" required></div><div class="field"><label>Máquina</label><select id="dmaquina">${maq}</select></div><div class="field"><label>Litros *</label><input id="dlitros" type="number" step="0.01" required></div><div class="field"><label>Valor por litro</label><input id="dvalor" type="number" step="0.01"></div><div class="field"><label>Talhão (opcional)</label><select id="dtalhao"><option value="">Não vincular</option>${tal}</select></div></div><br><button class="primary">Salvar abastecimento</button></form>`,rows,["Data","Máquina","Litros","Talhão",""])}
 function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${x.valor?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="movEstoque(${i})">Movimentar</button> <button class="secondary" onclick="editar('estoque',${i})">Editar</button> <button class="danger" onclick="del('estoque',${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div><div class="field"><label>Lote</label><input id="elote"></div><div class="field full"><label>Foto da nota</label>
 <div class="cameraBox"><input id="efoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'epreview')">
-<img id="epreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerNotaEstoque()">📷 Ler nota pela câmera</button></div>
-<div id="eocrstatus" class="ocrStatus">Fotografe a nota e toque em “Ler nota”. Confira os campos antes de salvar.</div></div></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
+<img id="epreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerNotaEstoque()">📷 Ler e separar itens da nota</button></div>
+<div id="eocrstatus" class="ocrStatus">Fotografe a nota inteira. O Terra Santa tentará separar os produtos para conferência.</div>
+<div id="notaReview" class="notaReview" style="display:none"></div></div></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
 function custos(){
  state.custos=state.custos||[];
  const total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);
@@ -216,17 +221,89 @@ function acharValor(texto,rotulos){
    if(m)return numeroBR(m[1]);
  } return null;
 }
+function normalizarUnidade(u){
+ u=(u||"").toUpperCase().replace(".","");
+ if(["L","LT","LTS","LITRO","LITROS"].includes(u))return "L";
+ if(["KG","KGS","QUILO","QUILOS"].includes(u))return "kg";
+ if(["TN","TON","T","TONELADA","TONELADAS"].includes(u))return "t";
+ if(["BB","SC","SACA","SACAS"].includes(u))return "un";
+ return u||"un";
+}
+function categoriaSugerida(nome){
+ const n=(nome||"").toUpperCase();
+ if(/DIESEL|OLEO DIESEL|ÓLEO DIESEL/.test(n))return "Diesel";
+ if(/SEMENT|SOJA|MILHO|TRIGO|HERA|OLIMPO/.test(n))return "Semente";
+ if(/CALCAR|GESSO|ADUB|FERTIL|MAP|KCL|UREIA/.test(n))return "Fertilizante";
+ if(/HERB|GLIF|GLUF|CLIPPER|INSET|FUNG|INSETIC|FUNGIC|2,4-D/.test(n))return "Defensivo";
+ if(/PECA|PEÇA|FILTRO|ROLAMENTO|CORREIA/.test(n))return "Peça";
+ return "Outros";
+}
+function extrairItensNota(t){
+ const linhas=t.split(/\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean), itens=[];
+ for(let i=0;i<linhas.length;i++){
+   const l=linhas[i], up=l.toUpperCase();
+   if(/DESCRI|PRODUTO\/SERVI|NCM|CFOP|VALOR TOTAL|DADOS DOS PRODUTOS/.test(up))continue;
+   let m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)/i);
+   if(m){
+     const nome=m[1].replace(/^\d+\s+/,"").trim();
+     if(/[A-Za-zÁ-ú]{3,}/.test(nome)){
+       itens.push({produto:nome.slice(0,100),unidade:normalizarUnidade(m[2]),quantidade:numeroBR(m[3])||0,
+         valorUnit:m[4]?numeroBR(m[4]):0,valorTotal:m[5]?numeroBR(m[5]):0,lote:"",categoria:categoriaSugerida(nome)});
+     }
+   }
+ }
+ // Lotes may appear on continuation lines.
+ for(const it of itens){
+   const idx=linhas.findIndex(x=>x.includes(it.produto.slice(0,18)));
+   const trecho=linhas.slice(Math.max(0,idx),Math.min(linhas.length,idx+3)).join(" ");
+   const lm=trecho.match(/LOTE[:\s\-]*([A-Z0-9\-\/]+)/i); if(lm)it.lote=lm[1];
+ }
+ return itens;
+}
+function mostrarConferenciaNota(itens,meta={}){
+ const box=document.getElementById("notaReview"); if(!box)return;
+ box.style.display="block";
+ box.innerHTML=`<b>Conferir nota</b><div class="muted">Revise os itens antes de lançar no estoque.</div>
+ <div class="form" style="margin-top:10px"><div class="field"><label>Nº da nota</label><input id="revNota" value="${esc(meta.nota||"")}"></div>
+ <div class="field"><label>Data</label><input id="revData" type="date" value="${esc(meta.data||"")}"></div>
+ <div class="field full"><label>Fornecedor</label><input id="revFornecedor" value="${esc(meta.fornecedor||"")}"></div></div>
+ <div id="revItens">${itens.map((x,i)=>`<div class="notaItem"><div class="notaGrid">
+ <div class="field produto"><label>Produto</label><input data-k="produto" value="${esc(x.produto)}"></div>
+ <div class="field"><label>Quantidade</label><input data-k="quantidade" type="number" step="0.001" value="${x.quantidade||""}"></div>
+ <div class="field"><label>Unidade</label><select data-k="unidade">${["L","kg","t","un"].map(u=>`<option ${x.unidade===u?"selected":""}>${u}</option>`).join("")}</select></div>
+ <div class="field"><label>Lote</label><input data-k="lote" value="${esc(x.lote||"")}"></div>
+ <div class="field"><label>Categoria</label><select data-k="categoria">${["Defensivo","Semente","Fertilizante","Diesel","Peça","Outros"].map(c=>`<option ${x.categoria===c?"selected":""}>${c}</option>`).join("")}</select></div>
+ <div class="field"><label>Valor unit.</label><input data-k="valorUnit" type="number" step="0.01" value="${x.valorUnit||""}"></div>
+ <div class="field"><label>Valor total</label><input data-k="valorTotal" type="number" step="0.01" value="${x.valorTotal||""}"></div>
+ <div class="field"><label>&nbsp;</label><button type="button" class="danger" onclick="this.closest('.notaItem').remove()">Remover</button></div>
+ </div></div>`).join("")}</div>
+ <button type="button" class="secondary" onclick="adicionarItemConferencia()">+ Adicionar item</button>
+ <button type="button" class="primary" onclick="confirmarNotaEstoque()">Confirmar entrada no estoque</button>`;
+}
+function adicionarItemConferencia(){
+ const box=document.getElementById("revItens"),d=document.createElement("div");d.className="notaItem";
+ d.innerHTML=`<div class="notaGrid"><div class="field produto"><label>Produto</label><input data-k="produto"></div><div class="field"><label>Quantidade</label><input data-k="quantidade" type="number" step="0.001"></div><div class="field"><label>Unidade</label><select data-k="unidade"><option>L</option><option>kg</option><option>t</option><option>un</option></select></div><div class="field"><label>Lote</label><input data-k="lote"></div><div class="field"><label>Categoria</label><select data-k="categoria"><option>Defensivo</option><option>Semente</option><option>Fertilizante</option><option>Diesel</option><option>Peça</option><option>Outros</option></select></div><div class="field"><label>Valor total</label><input data-k="valorTotal" type="number" step="0.01"></div><div class="field"><label>&nbsp;</label><button type="button" class="danger" onclick="this.closest('.notaItem').remove()">Remover</button></div></div>`;box.appendChild(d);
+}
+async function confirmarNotaEstoque(){
+ const nota=document.getElementById("revNota")?.value||"", rows=[...document.querySelectorAll("#revItens .notaItem")];
+ if(!rows.length){alert("Adicione pelo menos um item.");return}
+ for(const row of rows){
+   const get=k=>row.querySelector(`[data-k="${k}"]`)?.value||"";
+   const produto=get("produto").trim(),quantidade=Number(get("quantidade")||0),valor=Number(get("valorTotal")||0);
+   if(!produto||quantidade<=0)continue;
+   state.estoque.push({produto,categoria:get("categoria"),quantidade,unidade:get("unidade"),valor,nota,lote:get("lote")});
+ }
+ await salvarEstado();alert("Itens da nota lançados no estoque.");render();
+}
 async function lerNotaEstoque(){
  const t=await reconhecerImagem("efoto","eocrstatus");if(!t)return;
- const nota=t.match(/(?:NF[-\s]?E|NOTA|N[º°O]?\s*NOTA)[^\d]{0,15}(\d{3,})/i);
- const lote=t.match(/LOTE[^\w]{0,10}([A-Z0-9\-\/]+)/i);
- const total=acharValor(t,["VALOR\\s*TOTAL","TOTAL\\s*DA\\s*NOTA","TOTAL"]);
- if(nota&&document.getElementById("enota"))enota.value=nota[1];
- if(lote&&document.getElementById("elote"))elote.value=lote[1];
- if(total!=null&&document.getElementById("evalor"))evalor.value=total;
- const linhas=t.split(/\n/).map(x=>x.trim()).filter(x=>x.length>3);
- const candidata=linhas.find(x=>/[A-Za-zÁ-ú]{4,}/.test(x)&&!/(nota|cnpj|cliente|total|chave|endereço|telefone)/i.test(x));
- if(candidata&&document.getElementById("eproduto")&&!eproduto.value)eproduto.value=candidata.slice(0,80);
+ const nota=(t.match(/(?:NF[-\s]?E|N[º°O]?\s*(?:DA\s*)?NOTA|N[º°])\D{0,12}(\d[\d\.]{2,})/i)||[])[1]?.replace(/\D/g,"")||"";
+ const dm=t.match(/\b(\d{2})[\/-](\d{2})[\/-](\d{4})\b/), data=dm?`${dm[3]}-${dm[2]}-${dm[1]}`:"";
+ let itens=extrairItensNota(t);
+ if(!itens.length)itens=[{produto:"",quantidade:0,unidade:"un",lote:"",categoria:"Outros",valorUnit:0,valorTotal:0}];
+ mostrarConferenciaNota(itens,{nota,data,fornecedor:""});
+ document.getElementById("eocrstatus").textContent=`Leitura concluída: ${itens.filter(x=>x.produto).length} item(ns) identificado(s). Confira abaixo.`;
 }
 async function lerRomaneio(){
  const t=await reconhecerImagem("rfoto","rocrstatus");if(!t)return;
