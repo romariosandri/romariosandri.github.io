@@ -573,7 +573,7 @@ function previewAplicacao(areaManual=false){
 }
 function addLinhaProduto(){const box=document.getElementById("produtosAplicacao");if(!box)return;const op=(state.estoque||[]).map((x,i)=>`<option value="${i}">${esc(x.produto)} — ${esc(x.quantidade)} ${esc(x.unidade)}</option>`).join("");box.insertAdjacentHTML("beforeend",`<div class="form produtoLinha" style="margin-top:10px"><div class="field"><label>Produto</label><select class="aprProduto" onchange="previewAplicacao()">${op}</select></div><div class="field"><label>Dose/ha</label><input class="aprDose" type="number" step="0.001" min="0" required oninput="previewAplicacao()"></div></div>`);previewAplicacao()}
 function colheita(){state.colheita=state.colheita||[];let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("");let rows=state.colheita.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.cultura)}</td><td>${esc(x.peso)} kg</td><td><button class="secondary" onclick="editar('colheita',${i})">Editar</button> <button class="danger" onclick="del('colheita',${i})">Excluir</button></td></tr>`).join("");return listPage("colheita","Colheita","Registre a produção por talhão.","+ Nova Colheita",`<form onsubmit="addColheita(event)"><div class="form"><div class="field"><label>Data *</label><input id="hdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="htalhao">${tal}</select></div><div class="field"><label>Cultura</label><select id="hcultura"><option>Soja</option><option>Milho</option><option>Algodão</option></select></div><div class="field"><label>Peso líquido (kg) *</label><input id="hpeso" type="number" step="0.01" required></div><div class="field"><label>Safra</label><select id="hsafra">${opcoesSafra()}</select></div></div><br><button class="primary">Salvar colheita</button></form>`,rows,["Data","Talhão","Cultura","Peso",""])}
-function romaneios(){state.romaneios=state.romaneios||[];let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("");let cams=(state.caminhoes||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.placa)}${c.motorista?' — '+esc(c.motorista):''}</option>`).join('');let rows=state.romaneios.map((x,i)=>{const c=(state.caminhoes||[]).find(y=>y.id===x.caminhaoId)||{};return `<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(c.placa||'-')}</td><td>${esc(c.motorista||'-')}</td><td>${esc(x.destino||"-")}</td><td>${esc(x.liquido)} kg</td><td><button class="secondary" onclick="editar('romaneios',${i})">Editar</button> <button class="danger" onclick="del('romaneios',${i})">Excluir</button></td></tr>`}).join("");return listPage("romaneios","Romaneios","Controle cargas, descontos, caminhão e destino por talhão.","+ Novo Romaneio",`<form onsubmit="addRomaneio(event)"><div class="form"><div class="field"><label>Data *</label><input id="rdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="rtalhao">${tal}</select></div><div class="field"><label>Caminhão — placa / motorista</label><select id="rcaminhao"><option value="">Não vincular</option>${cams}</select></div><div class="field"><label>Destino</label><input id="rdestino"></div><div class="field"><label>Peso bruto (kg)</label><input id="rbruto" type="number" step="0.01"></div><div class="field"><label>Peso líquido (kg) *</label><input id="rliquido" type="number" step="0.01" required></div><div class="field"><label>Descontos / descrição</label><input id="rdesc"></div><div class="field"><label>Safra</label><select id="rsafra">${opcoesSafra()}</select></div><div class="field full"><label>Foto / comprovante</label>
+function romaneios(){state.romaneios=state.romaneios||[];let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("");let cams=(state.caminhoes||[]).map(c=>`<option value="${esc(c.id)}">${esc(c.placa)}${c.motorista?' — '+esc(c.motorista):''}</option>`).join('');let rows=state.romaneios.map((x,i)=>{const c=(state.caminhoes||[]).find(y=>y.id===x.caminhaoId)||{};return `<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(c.placa||'-')}</td><td>${esc(c.motorista||'-')}</td><td>${esc(x.destino||"-")}</td><td>${esc(x.liquido)} kg</td><td><button class="secondary" onclick="editar('romaneios',${i})">Editar</button> <button class="danger" onclick="del('romaneios',${i})">Excluir</button></td></tr>`}).join("");return listPage("romaneios","Romaneios","Controle cargas, descontos, caminhão e destino por talhão.","+ Novo Romaneio",`<form onsubmit="addRomaneio(event)"><div class="form"><div class="field"><label>Data *</label><input id="rdata" type="date" required></div><div class="field"><label>Nº do romaneio / ticket</label><input id="rnumero" placeholder="Lido automaticamente quando possível"></div><div class="field"><label>Talhão *</label><select id="rtalhao">${tal}</select></div><div class="field"><label>Caminhão — placa / motorista</label><select id="rcaminhao"><option value="">Não vincular</option>${cams}</select></div><div class="field"><label>Destino</label><input id="rdestino"></div><div class="field"><label>Peso bruto (kg)</label><input id="rbruto" type="number" step="0.01"></div><div class="field"><label>Peso líquido (kg) *</label><input id="rliquido" type="number" step="0.01" required></div><div class="field"><label>Descontos / descrição</label><input id="rdesc"></div><div class="field"><label>Safra</label><select id="rsafra">${opcoesSafra()}</select></div><div class="field full"><label>Foto / comprovante</label>
 <input id="rfoto" type="file" accept="image/*" capture="environment" onchange="previewImagem(this,'rpreview')">
 <img id="rpreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerRomaneio()">📷 Ler romaneio pela câmera</button></div>
 <div id="rocrstatus" class="ocrStatus">Fotografe o ticket e toque em “Ler romaneio”. Confira os dados antes de salvar.</div></div></div></div><br><button class="primary">Salvar romaneio</button></form>`,rows,["Data","Talhão","Placa","Motorista","Destino","Líquido",""])}
@@ -595,7 +595,7 @@ function vendas(){
 function calcVenda(){const q=Number(document.getElementById('vsacas')?.value||0),p=Number(document.getElementById('vpreco')?.value||0),e=document.getElementById('vtotal');if(e)e.value=(q*p).toFixed(2)}
 async function addVenda(e){e.preventDefault();state.vendas=state.vendas||[];const sacas=Number(vsacas.value||0),precoSc=Number(vpreco.value||0);state.vendas.push({id:'venda_'+Date.now(),data:vdata.value,safra:vsafra.value,cultura:vcultura.value,comprador:vcomprador.value,sacas,precoSc,valorTotal:sacas*precoSc,contrato:vcontrato.value,entrega:ventrega.value,recebimento:vrecebimento.value,obs:vobs.value});try{await salvarEstado();go('vendas')}catch(err){alert('Erro ao sincronizar venda: '+err.message)}}
 
-async function addRomaneio(e){e.preventDefault();state.romaneios=state.romaneios||[];state.romaneios.push({data:rdata.value,talhao:rtalhao.value,destino:rdestino.value,bruto:rbruto.value,liquido:rliquido.value,desconto:rdesc.value,caminhaoId:document.getElementById("rcaminhao")?.value||"",safra:document.getElementById("rsafra")?.value||safraAtivaNome()});await salvarEstado();go("romaneios")}
+async function addRomaneio(e){e.preventDefault();state.romaneios=state.romaneios||[];const numero=document.getElementById("rnumero")?.value.trim()||"",caminhaoId=document.getElementById("rcaminhao")?.value||"";if(romaneioDuplicado(numero,rdata.value,rliquido.value,caminhaoId,rdestino.value)){alert("⚠️ Este romaneio já parece estar lançado. O sistema bloqueou a duplicação.");return}state.romaneios.push({id:"rom_"+Date.now(),numero,data:rdata.value,talhao:rtalhao.value,destino:rdestino.value,bruto:rbruto.value,liquido:rliquido.value,desconto:rdesc.value,caminhaoId,safra:document.getElementById("rsafra")?.value||safraAtivaNome()});await salvarEstado();go("romaneios")}
 async function movEstoque(i){
  const x=state.estoque[i];if(!x)return;
  const tipo=prompt("Digite E para ENTRADA ou S para SAÍDA:","E");if(!tipo)return;
@@ -637,16 +637,23 @@ function preverFoto(input,imgId){
  const f=input.files?.[0],img=document.getElementById(imgId); if(!f||!img)return;
  img.src=URL.createObjectURL(f);img.style.display="block";
 }
+async function prepararImagemOCR(file){
+ const bmp=await createImageBitmap(file), maxW=3000, scale=Math.min(2.5,maxW/bmp.width), w=Math.max(1,Math.round(bmp.width*scale)), h=Math.max(1,Math.round(bmp.height*scale));
+ const c=document.createElement("canvas");c.width=w;c.height=h;const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(bmp,0,0,w,h);
+ const im=ctx.getImageData(0,0,w,h),d=im.data;
+ for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];const v=Math.max(0,Math.min(255,(g-128)*1.45+145));d[i]=d[i+1]=d[i+2]=v}
+ ctx.putImageData(im,0,0);return c;
+}
 async function reconhecerImagem(inputId,statusId){
  const f=document.getElementById(inputId)?.files?.[0],st=document.getElementById(statusId);
  if(!f){alert("Primeiro tire uma foto ou escolha uma imagem.");return null}
  if(typeof Tesseract==="undefined"){alert("A leitura automática precisa de internet para carregar o leitor.");return null}
- st.textContent="Lendo a imagem… aguarde.";
+ st.textContent="Melhorando a foto para leitura…";
  try{
-   const r=await Tesseract.recognize(f,"por",{logger:m=>{if(m.status==="recognizing text")st.textContent=`Lendo… ${Math.round((m.progress||0)*100)}%`}});
-   st.textContent="Leitura concluída. Confira os campos antes de salvar.";
-   return r.data.text||"";
- }catch(e){st.textContent="Não consegui ler esta foto. Você pode preencher manualmente.";return null}
+   const img=await prepararImagemOCR(f);
+   const r=await Tesseract.recognize(img,"por",{logger:m=>{if(m.status==="recognizing text")st.textContent=`Lendo… ${Math.round((m.progress||0)*100)}%`}});
+   st.textContent="Leitura concluída. Confira os campos antes de salvar.";return (r.data.text||"").replace(/[|]/g,"I");
+ }catch(e){st.textContent="Não consegui ler esta foto. Tente uma foto reta, com boa luz, ou preencha manualmente.";return null}
 }
 function numeroBR(s){if(!s)return null;return Number(String(s).replace(/\./g,"").replace(",","."))}
 function acharValor(texto,rotulos){
@@ -677,10 +684,13 @@ function extrairItensNota(t){
  for(let i=0;i<linhas.length;i++){
    const l=linhas[i], up=l.toUpperCase();
    if(/DESCRI|PRODUTO\/SERVI|NCM|CFOP|VALOR TOTAL|DADOS DOS PRODUTOS/.test(up))continue;
-   let m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   // DANFE costuma trazer: descrição + NCM + CST + CFOP + UN + QTD + V.UNIT + V.TOTAL
+   let m=l.match(/(.{4,}?)\s+\d{6,8}\s+\d{2,4}\s+\d{4}\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(?:\d{2,8}\s+){1,4}(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
    if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)/i);
    if(m){
-     const nome=m[1].replace(/^\d+\s+/,"").trim();
+     let nome=m[1].replace(/^\s*\d+\s+/,"").replace(/\s+\d{6,8}\s+\d{2,4}\s+\d{4}.*$/i,"").trim();
      if(/[A-Za-zÁ-ú]{3,}/.test(nome)){
        itens.push({produto:nome.slice(0,100),unidade:normalizarUnidade(m[2]),quantidade:numeroBR(m[3])||0,
          valorUnit:m[4]?numeroBR(m[4]):0,valorTotal:m[5]?numeroBR(m[5]):0,lote:"",categoria:categoriaSugerida(nome)});
@@ -735,38 +745,52 @@ function adicionarItemConferencia(){
  const box=document.getElementById("revItens"),d=document.createElement("div");d.className="notaItem";
  d.innerHTML=`<div class="notaGrid"><div class="field produto"><label>Produto</label><input data-k="produto"></div><div class="field"><label>Quantidade</label><input data-k="quantidade" type="number" step="0.001"></div><div class="field"><label>Unidade</label><select data-k="unidade"><option>L</option><option>kg</option><option>t</option><option>un</option></select></div><div class="field"><label>Lote</label><input data-k="lote"></div><div class="field"><label>Categoria</label><select data-k="categoria"><option>Defensivo</option><option>Semente</option><option>Fertilizante</option><option>Diesel</option><option>Peça</option><option>Outros</option></select></div><div class="field"><label>Valor unit.</label><input data-k="valorUnit" type="number" step="0.0001"></div><div class="field"><label>Valor total</label><input data-k="valorTotal" type="number" step="0.01"></div><div class="field"><label>&nbsp;</label><button type="button" class="danger" onclick="this.closest('.notaItem').remove()">Remover</button></div></div>`;box.appendChild(d);
 }
+function chaveTexto(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"")}
+function notaJaLancada(nota,fornecedor,data){
+ const n=chaveTexto(nota),f=chaveTexto(fornecedor); if(n&&n.length>=3&&state.estoque.some(x=>chaveTexto(x.nota)===n))return true;
+ return !n&&f&&data&&state.estoque.some(x=>chaveTexto(x.fornecedor)===f&&x.dataNota===data);
+}
 async function confirmarNotaEstoque(){
- const nota=document.getElementById("revNota")?.value||"", rows=[...document.querySelectorAll("#revItens .notaItem")];
+ const nota=document.getElementById("revNota")?.value.trim()||"", fornecedor=document.getElementById("revFornecedor")?.value.trim()||"", dataNota=document.getElementById("revData")?.value||"", rows=[...document.querySelectorAll("#revItens .notaItem")];
  if(!rows.length){alert("Adicione pelo menos um item.");return}
- for(const row of rows){
-   const get=k=>row.querySelector(`[data-k="${k}"]`)?.value||"";
-   const produto=get("produto").trim(),quantidade=Number(get("quantidade")||0),valor=Number(get("valorTotal")||0);
-   if(!produto||quantidade<=0)continue;
-   state.estoque.push({produto,categoria:get("categoria"),quantidade,unidade:get("unidade"),valor,nota,lote:get("lote")});
- }
- await salvarEstado();alert("Itens da nota lançados no estoque.");render();
+ if(notaJaLancada(nota,fornecedor,dataNota)){alert(`⚠️ Esta nota${nota?' nº '+nota:''} já foi lançada. Nenhum item foi duplicado.`);return}
+ let adicionados=0;
+ for(const row of rows){const get=k=>row.querySelector(`[data-k="${k}"]`)?.value||"";const produto=get("produto").trim(),quantidade=Number(get("quantidade")||0),valor=Number(get("valorTotal")||0);if(!produto||quantidade<=0)continue;state.estoque.push({produto,categoria:get("categoria"),quantidade,unidade:get("unidade"),valor,nota,lote:get("lote"),fornecedor,dataNota,origem:"nota"});adicionados++}
+ if(!adicionados){alert("Nenhum item válido para lançar.");return} await salvarEstado();alert("Itens da nota lançados no estoque.");render();
 }
 async function lerNotaEstoque(){
  const t=await reconhecerImagem("efoto","eocrstatus");if(!t)return;
- const nota=(t.match(/(?:NF[-\s]?E|N[º°O]?\s*(?:DA\s*)?NOTA|N[º°])\D{0,12}(\d[\d\.]{2,})/i)||[])[1]?.replace(/\D/g,"")||"";
- const dm=t.match(/\b(\d{2})[\/-](\d{2})[\/-](\d{4})\b/), data=dm?`${dm[3]}-${dm[2]}-${dm[1]}`:"";
- let itens=extrairItensNota(t);
- if(!itens.length)itens=[{produto:"",quantidade:0,unidade:"un",lote:"",categoria:"Outros",valorUnit:0,valorTotal:0}];
- mostrarConferenciaNota(itens,{nota,data,fornecedor:""});
- document.getElementById("eocrstatus").textContent=`Leitura concluída: ${itens.filter(x=>x.produto).length} item(ns) identificado(s). Confira abaixo.`;
+ const chave=(t.match(/\b(\d{44})\b/)||[])[1]||"";
+ let nota=(t.match(/(?:NF[-\s]?E|NOTA\s*FISCAL|N[º°O]?\s*(?:DA\s*)?NOTA|N[º°])[^\d]{0,20}(\d[\d\.\-]{2,})/i)||[])[1]?.replace(/\D/g,"")||"";
+ // Em DANFE, o número também aparece como "Nº 0290145" perto do cabeçalho.
+ if(!nota){const nm=t.match(/\bN[º°O]?\s*[:.-]?\s*(0?\d{5,9})\b/i);if(nm)nota=nm[1]}
+ const datas=[...t.matchAll(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/g)];
+ const dm=datas.find(x=>/DATA\s+(?:DA\s+)?(?:EMISS|SA[IÍ]DA|ENTRADA)/i.test(t.slice(Math.max(0,x.index-80),x.index)))||datas[0],data=dm?`${dm[3]}-${dm[2]}-${dm[1]}`:"";
+ const linhas=t.split(/\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean); let fornecedor="";
+ const fi=linhas.findIndex(x=>/EMITENTE|FORNECEDOR|RAZ[AÃ]O SOCIAL/i.test(x)); if(fi>=0)fornecedor=(linhas[fi].split(/[:\-]/).slice(1).join(" ").trim()||linhas[fi+1]||"").slice(0,100);
+ if(!fornecedor){
+   const danfe=linhas.findIndex(x=>/\bDANFE\b/i.test(x));
+   const candidatos=linhas.slice(0,danfe>=0?danfe:12).filter(x=>/[A-ZÁ-Ú]{3,}.*(?:LTDA|S\/?A|ME|EIRELI|EMP|COMERCIO|MINER)/i.test(x));
+   if(candidatos.length)fornecedor=candidatos[0].slice(0,100);
+ }
+ if(chave&&!nota&&chave.length===44)nota=chave.slice(25,34).replace(/^0+/,"");
+ if(notaJaLancada(nota,fornecedor,data)){document.getElementById("eocrstatus").textContent=`⚠️ Possível nota duplicada${nota?' — nº '+nota:''}. Ela já consta no estoque.`;alert("⚠️ Esta nota parece já ter sido lançada. Confira antes de continuar.")}
+ let itens=extrairItensNota(t);if(!itens.length)itens=[{produto:"",quantidade:0,unidade:"un",lote:"",categoria:"Outros",valorUnit:0,valorTotal:0}];
+ mostrarConferenciaNota(itens,{nota,data,fornecedor});document.getElementById("eocrstatus").textContent=`Leitura concluída: ${itens.filter(x=>x.produto).length} item(ns) identificado(s). Confira abaixo antes de salvar.`;
+}
+function romaneioDuplicado(numero,data,liquido,caminhaoId,destino){
+ const n=chaveTexto(numero);if(n&&n.length>=2&&state.romaneios.some(x=>chaveTexto(x.numero)===n))return true;
+ const l=Number(liquido||0);return !n&&!!data&&l>0&&state.romaneios.some(x=>x.data===data&&Math.abs(Number(x.liquido||0)-l)<.01&&(!caminhaoId||x.caminhaoId===caminhaoId)&&(!destino||chaveTexto(x.destino)===chaveTexto(destino)));
 }
 async function lerRomaneio(){
  const t=await reconhecerImagem("rfoto","rocrstatus");if(!t)return;
- const bruto=t.match(/(?:PESO\s*)?BRUTO[^\d]{0,18}([\d\.,]+)/i);
- const liquido=t.match(/(?:PESO\s*)?L[IÍ]QUIDO[^\d]{0,18}([\d\.,]+)/i);
- const data=t.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/);
- if(bruto&&document.getElementById("rbruto"))rbruto.value=numeroBR(bruto[1]);
- if(liquido&&document.getElementById("rliquido"))rliquido.value=numeroBR(liquido[1]);
- if(data&&document.getElementById("rdata"))rdata.value=`${data[3]}-${data[2]}-${data[1]}`;
- const dest=t.match(/(?:DESTINO|ARMAZ[EÉ]M|CLIENTE)[^\n:]*[:\-]?\s*([^\n]+)/i);
- if(dest&&document.getElementById("rdestino")&&!rdestino.value)rdestino.value=dest[1].trim().slice(0,80);
- const desc=t.match(/(?:DESCONTO|IMPUREZA|UMIDADE)[^\n]*/ig);
- if(desc&&document.getElementById("rdesc"))rdesc.value=desc.join(" | ").slice(0,180);
+ const numero=(t.match(/(?:ROMANEIO|TICKET|TÍQUETE|COMPROVANTE|N[º°])[^\d]{0,18}(\d{2,})/i)||[])[1]||"";
+ const bruto=t.match(/(?:PESO\s*)?BRUTO[^\d]{0,22}([\d\.]+(?:,\d+)?)/i),liquido=t.match(/(?:PESO\s*)?L[IÍ]QUIDO[^\d]{0,22}([\d\.]+(?:,\d+)?)/i),tara=t.match(/TARA[^\d]{0,18}([\d\.]+(?:,\d+)?)/i),data=t.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/);
+ if(numero&&document.getElementById("rnumero"))rnumero.value=numero;if(bruto)rbruto.value=numeroBR(bruto[1]);if(liquido)rliquido.value=numeroBR(liquido[1]);else if(bruto&&tara)rliquido.value=Math.max(0,numeroBR(bruto[1])-numeroBR(tara[1]));if(data)rdata.value=`${data[3]}-${data[2]}-${data[1]}`;
+ const dest=t.match(/(?:DESTINO|ARMAZ[EÉ]M|CLIENTE)[^\n:]*[:\-]?\s*([^\n]+)/i);if(dest&&!rdestino.value)rdestino.value=dest[1].trim().slice(0,80);
+ const placa=(t.match(/\b([A-Z]{3}[\-\s]?[0-9][A-Z0-9][0-9]{2}|[A-Z]{3}[\-\s]?\d{4})\b/i)||[])[1]?.replace(/[-\s]/g,"").toUpperCase();if(placa){const c=(state.caminhoes||[]).find(x=>chaveTexto(x.placa)===chaveTexto(placa));if(c&&document.getElementById("rcaminhao"))rcaminhao.value=c.id}
+ const desc=t.match(/(?:DESCONTO|IMPUREZA|UMIDADE)[^\n]*/ig);if(desc)rdesc.value=desc.join(" | ").slice(0,180);
+ if(romaneioDuplicado(rnumero?.value,rdata?.value,rliquido?.value,rcaminhao?.value,rdestino?.value)){document.getElementById("rocrstatus").textContent="⚠️ Possível romaneio duplicado. Confira antes de salvar.";alert("⚠️ Este romaneio parece já ter sido lançado.")}else document.getElementById("rocrstatus").textContent="Leitura concluída. Confira os dados e salve.";
 }
 function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}</h1><p>${desc}</p></div><div class="grid">${["Cadastros","Operações","Histórico","Indicadores"].map(x=>`<div class="card"><b>${x}</b><p class="muted">Módulo preparado para a próxima etapa.</p></div>`).join("")}</div>`}
 async function addFarm(e){
@@ -801,7 +825,7 @@ async function addPlantio(e){e.preventDefault();state.plantio=state.plantio||[];
 async function addMaquina(e){e.preventDefault();state.maquinas=state.maquinas||[];state.maquinas.push({nome:mnome.value,tipo:mtipo.value,modelo:mmodelo.value,horas:mhoras.value});try{await salvarEstado();go("maquinas")}catch(erro){alert("Erro ao sincronizar máquina: "+erro.message)}}
 async function calcDiesel(){const q=Number(document.getElementById("dlitros")?.value||0),v=Number(document.getElementById("dvalor")?.value||0),t=document.getElementById("dtotal");if(t)t.value=(q*v).toFixed(2)}
 async function addDiesel(e){e.preventDefault();state.diesel=state.diesel||[];const tipo=document.getElementById("dtipo")?.value||"maquina";state.diesel.push({id:"diesel_"+Date.now(),data:ddata.value,tipo,maquina:tipo==="maquina"?dmaquina.value:"",caminhaoId:tipo==="caminhao"?(document.getElementById("dcaminhao")?.value||""):"",litros:dlitros.value,valor:dvalor.value,km:tipo==="caminhao"?(document.getElementById("dkm")?.value||""):"",talhao:dtalhao.value,safra:document.getElementById("dsafra")?.value||safraAtivaNome()});try{await salvarEstado();go("diesel")}catch(erro){alert("Erro ao sincronizar abastecimento: "+erro.message)}}
-async function addEstoque(e){e.preventDefault();state.estoque=state.estoque||[];state.estoque.push({produto:eproduto.value,categoria:ecategoria.value,quantidade:eqtd.value,unidade:eunidade.value,valor:evalor.value,nota:enota.value,lote:elote.value});try{await salvarEstado();go("estoque")}catch(erro){alert("Erro ao sincronizar estoque: "+erro.message)}}
+async function addEstoque(e){e.preventDefault();state.estoque=state.estoque||[];const nota=enota.value.trim();if(nota&&state.estoque.some(x=>chaveTexto(x.nota)===chaveTexto(nota))){alert("⚠️ Esta nota já consta no estoque. O sistema bloqueou a duplicação.");return}state.estoque.push({produto:eproduto.value,categoria:ecategoria.value,quantidade:eqtd.value,unidade:eunidade.value,valor:evalor.value,nota,lote:elote.value});try{await salvarEstado();go("estoque")}catch(erro){alert("Erro ao sincronizar estoque: "+erro.message)}}
 async function addCusto(e){
  e.preventDefault();state.custos=state.custos||[];state.estoque=state.estoque||[];
  const destino=cdestino.value, valor=Number(cvalor.value||0), qtd=Number(document.getElementById("cqtd")?.value||0);
