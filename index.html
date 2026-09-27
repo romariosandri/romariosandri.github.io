@@ -637,23 +637,38 @@ function preverFoto(input,imgId){
  const f=input.files?.[0],img=document.getElementById(imgId); if(!f||!img)return;
  img.src=URL.createObjectURL(f);img.style.display="block";
 }
-async function prepararImagemOCR(file){
- const bmp=await createImageBitmap(file), maxW=3000, scale=Math.min(2.5,maxW/bmp.width), w=Math.max(1,Math.round(bmp.width*scale)), h=Math.max(1,Math.round(bmp.height*scale));
- const c=document.createElement("canvas");c.width=w;c.height=h;const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(bmp,0,0,w,h);
+async function prepararImagemOCR(file,modo="full"){
+ const bmp=await createImageBitmap(file), maxW=3600, scale=Math.min(3,maxW/bmp.width), W=Math.max(1,Math.round(bmp.width*scale)), H=Math.max(1,Math.round(bmp.height*scale));
+ let sx=0,sy=0,sw=bmp.width,sh=bmp.height;
+ if(modo==="topo")sh=Math.round(bmp.height*.48);
+ if(modo==="tabela"){sy=Math.round(bmp.height*.42);sh=bmp.height-sy}
+ if(modo==="centro"){sy=Math.round(bmp.height*.12);sh=Math.round(bmp.height*.76)}
+ const w=Math.max(1,Math.round(sw*scale)),h=Math.max(1,Math.round(sh*scale));
+ const c=document.createElement("canvas");c.width=w;c.height=h;const ctx=c.getContext("2d",{willReadFrequently:true});
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(bmp,sx,sy,sw,sh,0,0,w,h);
  const im=ctx.getImageData(0,0,w,h),d=im.data;
- for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];const v=Math.max(0,Math.min(255,(g-128)*1.45+145));d[i]=d[i+1]=d[i+2]=v}
+ for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2];let v=(g-128)*1.75+150;if(v>205)v=255;else if(v<65)v=0;d[i]=d[i+1]=d[i+2]=Math.max(0,Math.min(255,v))}
  ctx.putImageData(im,0,0);return c;
+}
+async function ocrCanvas(img,st,prefix="Lendo"){
+ const r=await Tesseract.recognize(img,"por",{logger:m=>{if(m.status==="recognizing text")st.textContent=`${prefix}… ${Math.round((m.progress||0)*100)}%`}});
+ return (r.data.text||"").replace(/[|]/g,"I");
 }
 async function reconhecerImagem(inputId,statusId){
  const f=document.getElementById(inputId)?.files?.[0],st=document.getElementById(statusId);
  if(!f){alert("Primeiro tire uma foto ou escolha uma imagem.");return null}
- if(typeof Tesseract==="undefined"){alert("A leitura automática precisa de internet para carregar o leitor.");return null}
- st.textContent="Melhorando a foto para leitura…";
+ if(typeof Tesseract==="undefined"){alert("A leitura automática precisa de internet para carregar o leitor gratuito.");return null}
+ st.textContent="Preparando a foto…";
  try{
-   const img=await prepararImagemOCR(f);
-   const r=await Tesseract.recognize(img,"por",{logger:m=>{if(m.status==="recognizing text")st.textContent=`Lendo… ${Math.round((m.progress||0)*100)}%`}});
-   st.textContent="Leitura concluída. Confira os campos antes de salvar.";return (r.data.text||"").replace(/[|]/g,"I");
- }catch(e){st.textContent="Não consegui ler esta foto. Tente uma foto reta, com boa luz, ou preencha manualmente.";return null}
+   // Duas leituras: uma da página e outra da região mais importante. Isso melhora DANFE e tickets sem API paga.
+   const full=await prepararImagemOCR(f,"full");
+   const t1=await ocrCanvas(full,st,"Lendo documento");
+   const modo=inputId==="efoto"?"tabela":"centro";
+   const reg=await prepararImagemOCR(f,modo);
+   const t2=await ocrCanvas(reg,st,inputId==="efoto"?"Relendo produtos":"Relendo pesos");
+   st.textContent="Leitura concluída. Confira os campos antes de salvar.";
+   return t1+"\n--- SEGUNDA LEITURA ---\n"+t2;
+ }catch(e){st.textContent="Não consegui ler esta foto. Tente uma foto reta, preenchendo a tela e sem reflexo.";return null}
 }
 function numeroBR(s){if(!s)return null;return Number(String(s).replace(/\./g,"").replace(",","."))}
 function acharValor(texto,rotulos){
@@ -685,10 +700,10 @@ function extrairItensNota(t){
    const l=linhas[i], up=l.toUpperCase();
    if(/DESCRI|PRODUTO\/SERVI|NCM|CFOP|VALOR TOTAL|DADOS DOS PRODUTOS/.test(up))continue;
    // DANFE costuma trazer: descrição + NCM + CST + CFOP + UN + QTD + V.UNIT + V.TOTAL
-   let m=l.match(/(.{4,}?)\s+\d{6,8}\s+\d{2,4}\s+\d{4}\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
-   if(!m) m=l.match(/(.{4,}?)\s+(?:\d{2,8}\s+){1,4}(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
-   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
-   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|BB|UN)\s+([\d\.,]+)/i);
+   let m=l.match(/(.{4,}?)\s+\d{6,8}\s+\d{2,4}\s+\d{4}\s+(KG|KGS|L|LT|LTS|TN|TON|T|BB|SC|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(?:\d{2,8}\s+){1,4}(KG|KGS|L|LT|LTS|TN|TON|T|BB|SC|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|T|BB|SC|UN)\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)/i);
+   if(!m) m=l.match(/(.{4,}?)\s+(KG|KGS|L|LT|LTS|TN|TON|T|BB|SC|UN)\s+([\d\.,]+)/i);
    if(m){
      let nome=m[1].replace(/^\s*\d+\s+/,"").replace(/\s+\d{6,8}\s+\d{2,4}\s+\d{4}.*$/i,"").trim();
      if(/[A-Za-zÁ-ú]{3,}/.test(nome)){
@@ -747,7 +762,7 @@ function adicionarItemConferencia(){
 }
 function chaveTexto(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"")}
 function notaJaLancada(nota,fornecedor,data){
- const n=chaveTexto(nota),f=chaveTexto(fornecedor); if(n&&n.length>=3&&state.estoque.some(x=>chaveTexto(x.nota)===n))return true;
+ const n=chaveTexto(nota),f=chaveTexto(fornecedor); if(n&&n.length>=3&&state.estoque.some(x=>chaveTexto(x.nota)===n&&(!f||!chaveTexto(x.fornecedor)||chaveTexto(x.fornecedor)===f)))return true;
  return !n&&f&&data&&state.estoque.some(x=>chaveTexto(x.fornecedor)===f&&x.dataNota===data);
 }
 async function confirmarNotaEstoque(){
