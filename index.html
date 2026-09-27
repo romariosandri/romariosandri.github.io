@@ -241,6 +241,14 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style id="terra-santa-ajuste-sem-logo">
+/* Teste solicitado: mantém somente a foto agrícola original na lateral e remove o logo. */
+@media (min-width:901px){
+  .top .terraLogo, .top .logo, .top .brand{display:none!important;}
+  .top{background:transparent!important;background-image:none!important;}
+}
+</style>
 </head>
 <body>
 <div class="app">
