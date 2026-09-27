@@ -129,7 +129,16 @@ function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x
 <div class="cameraBox"><input id="efoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'epreview')">
 <img id="epreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerNotaEstoque()">📷 Ler nota pela câmera</button></div>
 <div id="eocrstatus" class="ocrStatus">Fotografe a nota e toque em “Ler nota”. Confira os campos antes de salvar.</div></div></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
-function custos(){state.custos=state.custos||[];let total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);let rows=state.custos.map((x,i)=>{let t=state.talhoes.find(t=>t.nome===x.talhao),ha=Number(t?.area||0),pha=ha?Number(x.valor||0)/ha:0;return `<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.talhao||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td>${ha?"R$ "+pha.toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="editar('custos',${i})">Editar</button> <button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`).join("");return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Registre despesas da operação.","+ Novo Custo",`<form onsubmit="addCusto(event)"><div class="form"><div class="field"><label>Data *</label><input id="cdata" type="date" required></div><div class="field"><label>Descrição *</label><input id="cdesc" required></div><div class="field"><label>Categoria</label><select id="ccat"><option>Insumos</option><option>Máquinas</option><option>Manutenção</option><option>Mão de obra</option><option>Frete</option><option>Outros</option></select></div><div class="field"><label>Valor (R$) *</label><input id="cvalor" type="number" step="0.01" required></div></div><br><button class="primary">Salvar custo</button></form>`,rows,["Data","Descrição","Talhão","Valor","R$/ha",""])}
+function custos(){
+ state.custos=state.custos||[];
+ const total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);
+ const rows=state.custos.map((x,i)=>{
+   const t=state.talhoes.find(t=>t.nome===x.talhao),ha=Number(t?.area||0),pha=ha?Number(x.valor||0)/ha:0;
+   return `<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.talhao||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td>${ha?"R$ "+pha.toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="editar('custos',${i})">Editar</button> <button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`;
+ }).join("");
+ const form=`<form onsubmit="addCusto(event)"><div class="form"><div class="field"><label>Data *</label><input id="cdata" type="date" required></div><div class="field"><label>Descrição *</label><input id="cdesc" required></div><div class="field"><label>Categoria</label><select id="ccat"><option>Insumos</option><option>Máquinas</option><option>Manutenção</option><option>Mão de obra</option><option>Frete</option><option>Outros</option></select></div><div class="field"><label>Valor (R$) *</label><input id="cvalor" type="number" step="0.01" required></div></div><br><button class="primary">Salvar custo</button></form>`;
+ return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Registre despesas da operação.","+ Novo Custo",form,rows,["Data","Descrição","Talhão","Valor","R$/ha",""]);
+}
 function aplicacoes(){
 state.estoque=state.estoque||[];
 let opts=state.talhoes.map(t=>`<option value="${esc(t.nome)}">${esc(t.nome)}</option>`).join("")||"<option value=''>Cadastre um talhão primeiro</option>";
@@ -251,8 +260,9 @@ async function addTalhao(e){
 }
 async function addAplicacao(e){
  e.preventDefault(); state.estoque=state.estoque||[];state.custos=state.custos||[];
- const talhao=state.talhoes.find(t=>t.nome===atalhao.value), area=Number(talhao?.area||0);
- if(!talhao||!area){alert("Selecione um talhão com área cadastrada.");return}
+ const talhaoNome=document.getElementById("atalhao").value;
+ const talhaoObj=state.talhoes.find(t=>t.nome===talhaoNome), area=Number(talhaoObj?.area||0);
+ if(!talhaoObj||!area){alert("Selecione um talhão com área cadastrada.");return}
  const linhas=[...document.querySelectorAll(".produtoLinha")];
  if(!linhas.length){alert("Adicione pelo menos um produto.");return}
  let produtos=[],custoTotal=0;
@@ -267,8 +277,8 @@ async function addAplicacao(e){
  }
  for(const p of produtos){const item=state.estoque.find(x=>x.produto===p.produto);item.quantidade=Number(item.quantidade||0)-p.quantidade;item.valor=Math.max(0,Number(item.valor||0)-p.custo)}
  const id="apl_"+Date.now();
- state.aplicacoes.push({id,data:adata.value,talhao:atalhao.value,area,produtos,custo:custoTotal,obs:aobs.value});
- state.custos.push({id:"custo_"+id,origem:"aplicacao",aplicacaoId:id,data:adata.value,descricao:`Aplicação — ${atalhao.value}`,categoria:"Insumos",valor:custoTotal,talhao:atalhao.value});
+ state.aplicacoes.push({id,data:adata.value,talhao:talhaoNome,area,produtos,custo:custoTotal,obs:aobs.value});
+ state.custos.push({id:"custo_"+id,origem:"aplicacao",aplicacaoId:id,data:adata.value,descricao:`Aplicação — ${talhaoNome}`,categoria:"Insumos",valor:custoTotal,talhao:talhaoNome});
  try{await salvarEstado();go("aplicacoes")}catch(erro){alert("Erro ao sincronizar aplicação: "+erro.message)}
 }
 async function addSafra(e){e.preventDefault();state.safras.push({nome:snome.value,cultura:scultura.value,inicio:sinicio.value,fim:sfim.value});try{await salvarEstado();go("safras")}catch(erro){alert("Erro ao sincronizar safra: "+erro.message)}}
@@ -290,9 +300,22 @@ async function del(type,i){
     }
     if(type==="aplicacoes"){
       const a=state.aplicacoes[i];
-      if(a&&a.id&&a.quantidade!=null){
-        const item=(state.estoque||[]).find(x=>x.produto===a.produto);
-        if(item){item.quantidade=Number(item.quantidade||0)+Number(a.quantidade||0);item.valor=Number(item.valor||0)+Number(a.custo||0);}
+      if(a&&a.id){
+        if(Array.isArray(a.produtos)){
+          for(const p of a.produtos){
+            const item=(state.estoque||[]).find(x=>x.produto===p.produto);
+            if(item){
+              item.quantidade=Number(item.quantidade||0)+Number(p.quantidade||0);
+              item.valor=Number(item.valor||0)+Number(p.custo||0);
+            }
+          }
+        } else if(a.quantidade!=null){
+          const item=(state.estoque||[]).find(x=>x.produto===a.produto);
+          if(item){
+            item.quantidade=Number(item.quantidade||0)+Number(a.quantidade||0);
+            item.valor=Number(item.valor||0)+Number(a.custo||0);
+          }
+        }
         state.custos=(state.custos||[]).filter(c=>c.aplicacaoId!==a.id);
       }
     }
