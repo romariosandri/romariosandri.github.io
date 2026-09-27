@@ -55,8 +55,8 @@ function save(){localStorage.setItem("terraSanta",JSON.stringify(state))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function nav(active){document.getElementById("menu").innerHTML=modules.map(m=>`<button class="${m[0]===active?"active":""}" onclick="go('${m[0]}')">${m[1]} ${m[2]}</button>`).join("")}
 function go(page){
-  if(location.hash === "#"+page){ render(); }
-  else { location.hash=page; }
+  location.hash=page;
+  render();
 }
 function dashboard(){
 return `<div class="hero"><h1>Bom dia! 🌱</h1><p>Painel da sua operação agrícola</p></div>
@@ -96,10 +96,9 @@ async function addFarm(e){
   const novaFazenda={nome:fnome.value.trim(),area_total:Number(farea.value),municipio:flocal.value.trim()};
   try {
     await supabaseRequest("fazendas",{method:"POST",headers:{"Prefer":"return=representation"},body:JSON.stringify(novaFazenda)});
-    state.fazendas.push({nome:novaFazenda.nome,area:novaFazenda.area_total,local:novaFazenda.municipio});
-    save();
+    await carregarFazendas();
     alert("Fazenda salva com sucesso!");
-    go("fazendas");
+    render();
   } catch(erro){ alert("Erro ao salvar a fazenda: "+erro.message); }
 }
 function addTalhao(e){e.preventDefault();state.talhoes.push({nome:tnome.value,area:tarea.value,fazenda:tfarm.value,cultura:tcultura.value,safra:tsafra.value,variedade:tvar.value,obs:tobs.value});save();go("talhoes")}
@@ -115,6 +114,22 @@ else if(page==="safras")el.innerHTML=safras();
 else if(page==="aplicacoes")el.innerHTML=aplicacoes();
 else {let m=modules.find(x=>x[0]===page)||modules[0];el.innerHTML=generic(m[2],m[1],"Estrutura do módulo Terra Santa.");}
 }
-window.addEventListener("hashchange",render);render();
+async function carregarFazendas(){
+  try {
+    const dados = await supabaseRequest("fazendas?select=*&order=nome.asc");
+    if (Array.isArray(dados)) {
+      state.fazendas = dados.map(f => ({nome:f.nome, area:f.area_total, local:f.municipio, id:f.id}));
+      save();
+    }
+  } catch(erro) { console.error("Erro ao carregar fazendas:", erro); }
+}
+
+async function iniciar(){
+  await carregarFazendas();
+  render();
+}
+
+window.addEventListener("hashchange",render);
+iniciar();
 </script>
 </body></html>
