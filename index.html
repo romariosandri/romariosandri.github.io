@@ -405,8 +405,24 @@ function historicoTalhao(i){
  <div class="panel"><h2>Linha do tempo</h2><div style="overflow-x:auto"><table><thead><tr><th>Data</th><th>Operação</th><th>Detalhes</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="empty">Ainda não há movimentações vinculadas a este talhão.</td></tr>'}</tbody></table></div></div>`;
 }
 function safras(){
-let rows=state.safras.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.cultura)}</td><td>${esc(x.inicio||"-")}</td><td>${esc(x.fim||"-")}</td><td><button class="secondary" onclick="editar('safras',${i})">Editar</button> <button class="danger" onclick="del('safras',${i})">Excluir</button></td></tr>`).join("");
+let rows=state.safras.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.cultura)}</td><td>${esc(x.inicio||"-")}</td><td>${esc(x.fim||"-")}</td><td><button class="secondary" onclick="fechamentoSafra(${i})">📊 Fechamento</button> <button class="secondary" onclick="editar('safras',${i})">Editar</button> <button class="danger" onclick="del('safras',${i})">Excluir</button></td></tr>`).join("");
 return listPage("safras","Safras","Organize os lançamentos por safra e cultura.","+ Nova Safra",`<form onsubmit="addSafra(event)"><div class="form"><div class="field"><label>Safra *</label><input id="snome" required placeholder="2026/27"></div><div class="field"><label>Cultura *</label><select id="scultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Início</label><input id="sinicio" type="date"></div><div class="field"><label>Fim</label><input id="sfim" type="date"></div></div><br><button class="primary">Salvar safra</button></form>`,rows,["Safra","Cultura","Início","Fim",""])}
+function moeda(v){return Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+function talhoesDaSafra(sf){return (state.talhoes||[]).filter(t=>String(t.safra||'').trim()===String(sf.nome||'').trim() || (state.plantio||[]).some(p=>p.talhao===t.nome&&String(p.safra||'').trim()===String(sf.nome||'').trim()))}
+function custoTalhaoFechamento(nome){return (state.custos||[]).filter(x=>x.talhao===nome).reduce((a,x)=>a+Number(x.valor||0),0)+(state.diesel||[]).filter(x=>x.talhao===nome).reduce((a,x)=>a+Number(x.litros||0)*Number(x.valor||0),0)}
+function fechamentoSafra(i){window._safraFechamento=i;go("fechamentoSafra")}
+function fechamentoSafraPage(){
+ const i=Number(window._safraFechamento||0),sf=(state.safras||[])[i]; if(!sf)return `<div class="panel"><h2>Safra não encontrada</h2><button class="secondary" onclick="go('safras')">← Voltar</button></div>`;
+ const ts=talhoesDaSafra(sf),area=ts.reduce((a,t)=>a+Number(t.area||0),0), nomes=new Set(ts.map(t=>t.nome));
+ const kg=(state.colheita||[]).filter(x=>nomes.has(x.talhao)&&(!x.cultura||x.cultura===sf.cultura)).reduce((a,x)=>a+Number(x.peso||0),0), sacas=kg/60,prod=area?sacas/area:0;
+ const custo=ts.reduce((a,t)=>a+custoTalhaoFechamento(t.nome),0), custoHa=area?custo/area:0,custoSc=sacas?custo/sacas:0,preco=Number(sf.precoVenda||0),receita=sacas*preco,resultado=receita-custo,margemHa=area?resultado/area:0;
+ const rows=ts.map(t=>{const ar=Number(t.area||0),k=(state.colheita||[]).filter(x=>x.talhao===t.nome&&(!x.cultura||x.cultura===sf.cultura)).reduce((a,x)=>a+Number(x.peso||0),0),sc=k/60,pr=ar?sc/ar:0,ct=custoTalhaoFechamento(t.nome),rec=sc*preco,res=rec-ct;return `<tr><td><b>${esc(t.nome)}</b></td><td>${ar.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</td><td>${sc.toLocaleString('pt-BR',{maximumFractionDigits:1})} sc</td><td>${pr.toLocaleString('pt-BR',{maximumFractionDigits:1})} sc/ha</td><td>${moeda(ct)}</td><td>${ar?moeda(ct/ar):'-'}</td><td>${preco?moeda(res):'-'}</td></tr>`}).join('');
+ return `<div class="row"><div><h1 style="margin:0">📊 Fechamento — ${esc(sf.nome)}</h1><div class="muted">${esc(sf.cultura)} • resultado consolidado da safra</div></div><button class="secondary" onclick="go('safras')">← Safras</button></div>
+ <div class="panel"><div class="form"><div class="field"><label>Preço médio de venda (R$/saca)</label><input id="fpreco" type="number" step="0.01" value="${preco||''}" placeholder="Ex.: 125,00"></div><div class="field" style="align-self:end"><button class="primary" onclick="salvarPrecoSafra(${i})">Salvar preço e calcular</button></div></div></div>
+ <div class="grid"><div class="card metric"><div class="muted">Área da safra</div><div class="num">${area.toLocaleString('pt-BR',{maximumFractionDigits:1})} ha</div></div><div class="card metric"><div class="muted">Produção</div><div class="num">${sacas.toLocaleString('pt-BR',{maximumFractionDigits:1})} sc</div></div><div class="card metric"><div class="muted">Produtividade média</div><div class="num">${prod.toLocaleString('pt-BR',{maximumFractionDigits:1})} sc/ha</div></div><div class="card metric"><div class="muted">Custo total vinculado</div><div class="num">${moeda(custo)}</div></div><div class="card metric"><div class="muted">Custo / ha</div><div class="num">${moeda(custoHa)}</div></div><div class="card metric"><div class="muted">Custo / saca</div><div class="num">${moeda(custoSc)}</div></div><div class="card metric"><div class="muted">Receita estimada</div><div class="num">${preco?moeda(receita):'-'}</div></div><div class="card metric"><div class="muted">Resultado da safra</div><div class="num">${preco?moeda(resultado):'-'}</div><div class="muted">${preco?'Margem '+moeda(margemHa)+'/ha':'Informe o preço médio'}</div></div></div>
+ <div class="panel"><h2>Resultado por talhão</h2><div style="overflow-x:auto"><table><thead><tr><th>Talhão</th><th>Área</th><th>Produção</th><th>Produtividade</th><th>Custo</th><th>Custo/ha</th><th>Resultado</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">Nenhum talhão vinculado a esta safra.</td></tr>'}</tbody></table></div><div class="muted" style="margin-top:12px">O fechamento usa os lançamentos vinculados aos talhões desta safra. Custos sem talhão não entram no cálculo.</div></div>`;
+}
+async function salvarPrecoSafra(i){const sf=state.safras[i];if(!sf)return;sf.precoVenda=Number(document.getElementById('fpreco')?.value||0);try{await salvarEstado();window._safraFechamento=i;go('fechamentoSafra')}catch(e){alert('Erro ao salvar preço: '+e.message)}}
 function plantio(){state.plantio=state.plantio||[];let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>Cadastre um talhão primeiro</option>";let rows=state.plantio.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.cultura)}</td><td>${esc(x.variedade||"-")}</td><td>${esc(x.populacao||"-")}</td><td><button class="secondary" onclick="editar('plantio',${i})">Editar</button> <button class="danger" onclick="del('plantio',${i})">Excluir</button></td></tr>`).join("");return listPage("plantio","Plantio","Registre o plantio por talhão.","+ Registrar Plantio",`<form onsubmit="addPlantio(event)"><div class="form"><div class="field"><label>Data *</label><input id="pdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="ptalhao">${opts}</select></div><div class="field"><label>Cultura *</label><select id="pcultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Variedade / híbrido</label><input id="pvar"></div><div class="field"><label>População / sementes ha</label><input id="ppop"></div><div class="field"><label>Safra</label><input id="psafra" placeholder="2026/27"></div></div><br><button class="primary">Salvar plantio</button></form>`,rows,["Data","Talhão","Cultura","Variedade","População",""])}
 function maquinas(){state.maquinas=state.maquinas||[];let rows=state.maquinas.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.tipo||"-")}</td><td>${esc(x.modelo||"-")}</td><td>${esc(x.horas||"-")}</td><td><button class="secondary" onclick="editar('maquinas',${i})">Editar</button> <button class="danger" onclick="del('maquinas',${i})">Excluir</button></td></tr>`).join("");return listPage("maquinas","Máquinas","Cadastre tratores, colheitadeiras e implementos.","+ Nova Máquina",`<form onsubmit="addMaquina(event)"><div class="form"><div class="field"><label>Nome *</label><input id="mnome" required placeholder="Ex.: S550"></div><div class="field"><label>Tipo</label><input id="mtipo" placeholder="Colheitadeira"></div><div class="field"><label>Modelo</label><input id="mmodelo"></div><div class="field"><label>Horas atuais</label><input id="mhoras" type="number" step="0.1"></div></div><br><button class="primary">Salvar máquina</button></form>`,rows,["Máquina","Tipo","Modelo","Horas",""])}
 function diesel(){state.diesel=state.diesel||[];let maq=state.maquinas?.map(m=>`<option>${esc(m.nome)}</option>`).join("")||"<option>-</option>";let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>-</option>";let rows=state.diesel.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.maquina)}</td><td>${esc(x.litros)} L</td><td>${esc(x.talhao||"-")}</td><td><button class="secondary" onclick="editar('diesel',${i})">Editar</button> <button class="danger" onclick="del('diesel',${i})">Excluir</button></td></tr>`).join("");return listPage("diesel","Diesel","Controle abastecimentos e vincule ao talhão quando desejar.","+ Abastecimento",`<form onsubmit="addDiesel(event)"><div class="form"><div class="field"><label>Data *</label><input id="ddata" type="date" required></div><div class="field"><label>Máquina</label><select id="dmaquina">${maq}</select></div><div class="field"><label>Litros *</label><input id="dlitros" type="number" step="0.01" required oninput="calcDiesel()"></div><div class="field"><label>Valor por litro</label><input id="dvalor" type="number" step="0.01"></div><div class="field"><label>Talhão (opcional)</label><select id="dtalhao"><option value="">Não vincular</option>${tal}</select></div></div><br><button class="primary">Salvar abastecimento</button></form>`,rows,["Data","Máquina","Litros","Talhão",""])}
@@ -416,15 +432,39 @@ function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x
 <div id="eocrstatus" class="ocrStatus">Fotografe a nota inteira. O Terra Santa tentará separar os produtos para conferência.</div>
 <div id="notaReview" class="notaReview" style="display:none"></div></div></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
 function custos(){
- state.custos=state.custos||[];
+ state.custos=state.custos||[]; state.estoque=state.estoque||[]; state.maquinas=state.maquinas||[]; state.safras=state.safras||[];
  const total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);
  const rows=state.custos.map((x,i)=>{
    const t=state.talhoes.find(t=>t.nome===x.talhao),ha=Number(t?.area||0),pha=ha?Number(x.valor||0)/ha:0;
-   return `<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.talhao||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td>${ha?"R$ "+pha.toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="editar('custos',${i})">Editar</button> <button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`;
+   const destino=x.destino==="estoque"?"📦 Estoque":x.maquina?`🚜 ${esc(x.maquina)}`:"Despesa geral";
+   return `<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.categoria||"-")}</td><td>${destino}</td><td>${esc(x.safra||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td><button class="secondary" onclick="editar('custos',${i})">Editar</button> <button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`;
  }).join("");
- const form=`<form onsubmit="addCusto(event)"><div class="form"><div class="field"><label>Data *</label><input id="cdata" type="date" required></div><div class="field"><label>Descrição *</label><input id="cdesc" required></div><div class="field"><label>Categoria</label><select id="ccat"><option>Insumos</option><option>Máquinas</option><option>Manutenção</option><option>Mão de obra</option><option>Frete</option><option>Outros</option></select></div><div class="field"><label>Valor (R$) *</label><input id="cvalor" type="number" step="0.01" required></div></div><br><button class="primary">Salvar custo</button></form>`;
- return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Registre despesas da operação.","+ Novo Custo",form,rows,["Data","Descrição","Talhão","Valor","R$/ha",""]);
+ const maqOpts=state.maquinas.map(x=>`<option value="${esc(x.nome)}">${esc(x.nome)}</option>`).join("");
+ const safraOpts=state.safras.map(x=>`<option value="${esc(x.nome)}">${esc(x.nome)}</option>`).join("");
+ const form=`<form onsubmit="addCusto(event)"><div class="form">
+ <div class="field"><label>Data *</label><input id="cdata" type="date" required></div>
+ <div class="field"><label>Fornecedor</label><input id="cfornecedor"></div>
+ <div class="field"><label>Nº da nota</label><input id="cnota"></div>
+ <div class="field"><label>Descrição *</label><input id="cdesc" required placeholder="Ex.: filtro de óleo / serviço oficina"></div>
+ <div class="field"><label>Categoria</label><select id="ccat"><option>Peças</option><option>Oficina / Serviços</option><option>Pneus</option><option>Manutenção</option><option>Frete</option><option>Mão de obra</option><option>Outros</option></select></div>
+ <div class="field"><label>Valor total (R$) *</label><input id="cvalor" type="number" step="0.01" min="0" required></div>
+ <div class="field"><label>Safra</label><select id="csafra"><option value="">Sem vínculo</option>${safraOpts}</select></div>
+ <div class="field"><label>Destino</label><select id="cdestino" onchange="destinoCusto()"><option value="geral">Despesa geral</option><option value="maquina">Máquina</option><option value="estoque">Estoque</option></select></div>
+ <div class="field" id="cmaquinaBox" style="display:none"><label>Máquina</label><select id="cmaquina"><option value="">Selecione</option>${maqOpts}</select></div>
+ <div class="field" id="cprodutoBox" style="display:none"><label>Peça / item para o estoque</label><input id="cproduto"></div>
+ <div class="field" id="cqtdBox" style="display:none"><label>Quantidade</label><input id="cqtd" type="number" step="0.01" min="0"></div>
+ <div class="field" id="cunidadeBox" style="display:none"><label>Unidade</label><select id="cunidade"><option>un</option><option>kg</option><option>L</option><option>caixa</option><option>jogo</option></select></div>
+ <div class="field full"><label>Observações</label><textarea id="cobs" rows="2"></textarea></div>
+ </div><br><button class="primary">Salvar despesa</button></form>`;
+ return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Notas de peças, serviços e outras despesas. Vincule à máquina, safra ou mande a peça para o estoque.","+ Nova Despesa",form,rows,["Data","Descrição","Categoria","Destino","Safra","Valor",""]);
 }
+function destinoCusto(){
+ const d=document.getElementById("cdestino")?.value;
+ const mb=document.getElementById("cmaquinaBox"),pb=document.getElementById("cprodutoBox"),qb=document.getElementById("cqtdBox"),ub=document.getElementById("cunidadeBox");
+ if(mb)mb.style.display=d==="maquina"?"":"none";
+ for(const el of [pb,qb,ub])if(el)el.style.display=d==="estoque"?"":"none";
+}
+
 function aplicacoes(){
 state.estoque=state.estoque||[];
 let opts=state.talhoes.map(t=>`<option value="${esc(t.nome)}">${esc(t.nome)}</option>`).join("")||"<option value=''>Cadastre um talhão primeiro</option>";
@@ -658,7 +698,20 @@ async function addMaquina(e){e.preventDefault();state.maquinas=state.maquinas||[
 async function calcDiesel(){const q=Number(document.getElementById("dlitros")?.value||0),v=Number(document.getElementById("dvalor")?.value||0),t=document.getElementById("dtotal");if(t)t.value=(q*v).toFixed(2)}
 async function addDiesel(e){e.preventDefault();state.diesel=state.diesel||[];state.diesel.push({data:ddata.value,maquina:dmaquina.value,litros:dlitros.value,valor:dvalor.value,talhao:dtalhao.value});try{await salvarEstado();go("diesel")}catch(erro){alert("Erro ao sincronizar abastecimento: "+erro.message)}}
 async function addEstoque(e){e.preventDefault();state.estoque=state.estoque||[];state.estoque.push({produto:eproduto.value,categoria:ecategoria.value,quantidade:eqtd.value,unidade:eunidade.value,valor:evalor.value,nota:enota.value,lote:elote.value});try{await salvarEstado();go("estoque")}catch(erro){alert("Erro ao sincronizar estoque: "+erro.message)}}
-async function addCusto(e){e.preventDefault();state.custos=state.custos||[];state.custos.push({data:cdata.value,descricao:cdesc.value,categoria:ccat.value,valor:cvalor.value});try{await salvarEstado();go("custos")}catch(erro){alert("Erro ao sincronizar custo: "+erro.message)}}
+async function addCusto(e){
+ e.preventDefault();state.custos=state.custos||[];state.estoque=state.estoque||[];
+ const destino=cdestino.value, valor=Number(cvalor.value||0), qtd=Number(document.getElementById("cqtd")?.value||0);
+ if(destino==="maquina"&&!cmaquina.value){alert("Selecione a máquina.");return}
+ if(destino==="estoque"&&(!cproduto.value.trim()||qtd<=0)){alert("Informe a peça/item e a quantidade que irão para o estoque.");return}
+ const registro={data:cdata.value,fornecedor:cfornecedor.value,nota:cnota.value,descricao:cdesc.value,categoria:ccat.value,valor,safra:csafra.value,destino,maquina:destino==="maquina"?cmaquina.value:"",obs:cobs.value};
+ state.custos.push(registro);
+ if(destino==="estoque"){
+   const nome=cproduto.value.trim(),un=cunidade.value,existente=state.estoque.find(x=>String(x.produto).toLowerCase()===nome.toLowerCase()&&x.unidade===un);
+   if(existente){existente.quantidade=Number(existente.quantidade||0)+qtd;existente.valor=Number(existente.valor||0)+valor;if(cnota.value)existente.nota=cnota.value}
+   else state.estoque.push({produto:nome,categoria:"Peça",quantidade:qtd,unidade:un,valor,nota:cnota.value,lote:"",origem:"custo"});
+ }
+ try{await salvarEstado();go("custos")}catch(erro){alert("Erro ao sincronizar despesa: "+erro.message)}
+}
 async function del(type,i){
   if(!confirm("Excluir este registro?")) return;
   try {
@@ -726,6 +779,7 @@ if(page==="inicio")el.innerHTML=dashboard();
 else if(page==="fazendas")el.innerHTML=fazendas();
 else if(page==="talhoes")el.innerHTML=talhoes();
 else if(page==="safras")el.innerHTML=safras();
+else if(page==="fechamentoSafra")el.innerHTML=fechamentoSafraPage();
 else if(page==="aplicacoes")el.innerHTML=aplicacoes();
 else if(page==="plantio")el.innerHTML=plantio();
 else if(page==="maquinas")el.innerHTML=maquinas();
