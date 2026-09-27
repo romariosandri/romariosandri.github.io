@@ -21,10 +21,14 @@ main{max-width:1180px;margin:auto;padding:18px}.hero{background:linear-gradient(
 .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px}.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.primary{background:var(--green);color:#fff;border:0;border-radius:11px;padding:10px 14px}.secondary{background:#eef3ef;color:var(--green);border:0;border-radius:11px;padding:10px 14px}.danger{background:#fbeceb;color:var(--danger);border:0;border-radius:11px;padding:8px 11px}
 table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid var(--line);font-size:14px}
 .form{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff}.full{grid-column:1/-1}
-.empty{padding:25px;text-align:center;color:var(--muted)}
+.empty{padding:25px;text-align:center;color:var(--muted)} .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0}.toolbar input{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px}
+.cameraBox{border:1px dashed var(--line);border-radius:14px;padding:12px;margin:12px 0;background:#fafcf9}
+.cameraPreview{max-width:100%;max-height:260px;border-radius:10px;margin-top:10px;display:none}
+.ocrStatus{font-size:13px;color:var(--muted);margin-top:8px}
 @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.actions{grid-template-columns:repeat(2,1fr)}main{padding:12px}.hero{padding:18px}.form{grid-template-columns:1fr}.full{grid-column:auto}.top{height:64px}.menu{top:64px}}
 .badge{display:inline-block;background:#eef3ef;color:var(--green);border-radius:999px;padding:4px 8px;font-size:12px}.money{font-weight:700}.summary{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.summary .card{min-width:150px;flex:1}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -52,7 +56,7 @@ async function supabaseRequest(table, options = {}) {
 }
 
 const modules=[
-["inicio","🏠","Início"],["fazendas","🏡","Fazendas"],["talhoes","🌱","Talhões"],["safras","📅","Safras"],["aplicacoes","💧","Aplicações"],["plantio","🌾","Plantio"],["maquinas","🚜","Máquinas"],["diesel","⛽","Diesel"],["estoque","📦","Estoque"],["custos","💰","Custos"],["mapas","🗺️","Mapas"],["relatorios","📊","Relatórios"]
+["inicio","🏠","Início"],["fazendas","🏡","Fazendas"],["talhoes","🌱","Talhões"],["safras","📅","Safras"],["aplicacoes","💧","Aplicações"],["plantio","🌾","Plantio"],["maquinas","🚜","Máquinas"],["diesel","⛽","Diesel"],["estoque","📦","Estoque"],["custos","💰","Custos"],["colheita","🌽","Colheita"],["romaneios","🚛","Romaneios"],["mapas","🗺️","Mapas"],["relatorios","📊","Relatórios"]
 ];
 let state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');
 function saveLocal(){localStorage.setItem("terraSanta",JSON.stringify(state))}
@@ -76,6 +80,7 @@ async function carregarEstado(){
     state.talhoes=Array.isArray(state.talhoes)?state.talhoes:[];
     state.safras=Array.isArray(state.safras)?state.safras:[];
     state.aplicacoes=Array.isArray(state.aplicacoes)?state.aplicacoes:[];
+    for(const k of ["plantio","maquinas","diesel","estoque","custos","colheita","romaneios","movimentacoes"]) state[k]=Array.isArray(state[k])?state[k]:[];
     saveLocal();
   }
 }
@@ -88,20 +93,23 @@ function go(page){
 function dashboard(){
 return `<div class="hero"><h1>Bom dia! 🌱</h1><p>Painel da sua operação agrícola</p></div>
 <div class="grid">
-<div class="card metric"><div class="muted">Área total</div><div class="num">1.050 ha</div></div>
+<div class="card metric"><div class="muted">Área cadastrada</div><div class="num">${state.fazendas.reduce((s,f)=>s+Number(f.area||0),0).toLocaleString("pt-BR")} ha</div></div>
 <div class="card metric"><div class="muted">Talhões</div><div class="num">${state.talhoes.length}</div></div>
 <div class="card metric"><div class="muted">Safras</div><div class="num">${state.safras.length}</div></div>
 <div class="card metric"><div class="muted">Aplicações</div><div class="num">${state.aplicacoes.length}</div></div>
+<div class="card metric"><div class="muted">Estoque</div><div class="num">${(state.estoque||[]).length} itens</div></div>
+<div class="card metric"><div class="muted">Custos</div><div class="num">R$ ${(state.custos||[]).reduce((s,x)=>s+Number(x.valor||0),0).toLocaleString("pt-BR",{maximumFractionDigits:0})}</div></div>
 </div>
+<div class="panel"><b>Safra atual</b><div class="muted">${state.safras.length?esc(state.safras[state.safras.length-1].nome)+" — "+esc(state.safras[state.safras.length-1].cultura):"Nenhuma safra cadastrada"}</div></div>
 <div class="section"><h2>Acesso rápido</h2><div class="actions">
 ${[["🌱","talhoes","Novo Talhão"],["💧","aplicacoes","Nova Aplicação"],["🌾","plantio","Registrar Plantio"],["📦","estoque","Estoque"]].map(x=>`<button class="action" onclick="go('${x[1]}')"><span class="icon">${x[0]}</span><strong>${x[2]}</strong><span class="muted">Acessar módulo</span></button>`).join("")}
 </div></div>
-<div class="panel"><div class="row"><div><b>Próxima etapa</b><div class="muted">Cadastre a fazenda e depois seus talhões.</div></div><button class="primary" onclick="go('fazendas')">Abrir Fazendas</button></div></div>`;
+<div class="panel"><div class="row"><div><b>Segurança dos dados</b><div class="muted">Faça uma cópia dos dados do Terra Santa quando desejar.</div></div><div><button class="secondary" onclick="exportarBackup()">Exportar backup</button> <button class="secondary" onclick="document.getElementById('importBackup').click()">Importar backup</button><input id="importBackup" type="file" accept=".json,application/json" style="display:none" onchange="importarBackup(event)"></div></div></div>`;
 }
 function listPage(type,title,desc,button,formHtml,rows,headers){
 return `<div class="row"><div><h1 style="margin:0">${title}</h1><div class="muted">${desc}</div></div><button class="primary" onclick="toggleForm('${type}')">${button}</button></div>
 <div id="${type}Form" class="panel" style="display:none">${formHtml}</div>
-<div class="panel"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum cadastro ainda.</td></tr>`}</tbody></table></div>`;
+<div class="panel"><div class="toolbar"><input placeholder="Pesquisar..." oninput="filtrarTabela(this)"></div><div style="overflow-x:auto"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum cadastro ainda.</td></tr>`}</tbody></table></div></div>`;
 }
 function toggleForm(id){let e=document.getElementById(id+"Form");if(e)e.style.display=e.style.display==="none"?"block":"none"}
 function fazendas(){
@@ -112,17 +120,118 @@ let farms=state.fazendas.length?state.fazendas.map(f=>`<option>${esc(f.nome)}</o
 let rows=state.talhoes.map((t,i)=>`<tr><td>${esc(t.nome)}</td><td>${esc(t.area)} ha</td><td>${esc(t.cultura||"-")}</td><td>${esc(t.safra||"-")}</td><td><button class="danger" onclick="del('talhoes',${i})">Excluir</button></td></tr>`).join("");
 return listPage("talhoes","Talhões","O talhão será o centro para plantio, aplicações, custos, produtividade e mapas.","+ Novo Talhão",`<form onsubmit="addTalhao(event)"><div class="form"><div class="field"><label>Nome / número *</label><input id="tnome" required placeholder="Talhão 01"></div><div class="field"><label>Área (ha) *</label><input id="tarea" type="number" step="0.01" required></div><div class="field"><label>Fazenda</label><select id="tfarm">${farms}</select></div><div class="field"><label>Cultura</label><select id="tcultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Safra</label><input id="tsafra" placeholder="2026/27"></div><div class="field"><label>Variedade / híbrido</label><input id="tvar" placeholder="Opcional"></div><div class="field full"><label>Observações</label><textarea id="tobs" rows="3"></textarea></div></div><br><button class="primary">Salvar talhão</button></form>`,rows,["Talhão","Área","Cultura","Safra",""])}
 function safras(){
-let rows=state.safras.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.cultura)}</td><td>${esc(x.inicio||"-")}</td><td>${esc(x.fim||"-")}</td><td><button class="danger" onclick="del('safras',${i})">Excluir</button></td></tr>`).join("");
+let rows=state.safras.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.cultura)}</td><td>${esc(x.inicio||"-")}</td><td>${esc(x.fim||"-")}</td><td><button class="secondary" onclick="editar('safras',${i})">Editar</button> <button class="danger" onclick="del('safras',${i})">Excluir</button></td></tr>`).join("");
 return listPage("safras","Safras","Organize os lançamentos por safra e cultura.","+ Nova Safra",`<form onsubmit="addSafra(event)"><div class="form"><div class="field"><label>Safra *</label><input id="snome" required placeholder="2026/27"></div><div class="field"><label>Cultura *</label><select id="scultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Início</label><input id="sinicio" type="date"></div><div class="field"><label>Fim</label><input id="sfim" type="date"></div></div><br><button class="primary">Salvar safra</button></form>`,rows,["Safra","Cultura","Início","Fim",""])}
-function plantio(){state.plantio=state.plantio||[];let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>Cadastre um talhão primeiro</option>";let rows=state.plantio.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.cultura)}</td><td>${esc(x.variedade||"-")}</td><td>${esc(x.populacao||"-")}</td><td><button class="danger" onclick="del('plantio',${i})">Excluir</button></td></tr>`).join("");return listPage("plantio","Plantio","Registre o plantio por talhão.","+ Registrar Plantio",`<form onsubmit="addPlantio(event)"><div class="form"><div class="field"><label>Data *</label><input id="pdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="ptalhao">${opts}</select></div><div class="field"><label>Cultura *</label><select id="pcultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Variedade / híbrido</label><input id="pvar"></div><div class="field"><label>População / sementes ha</label><input id="ppop"></div><div class="field"><label>Safra</label><input id="psafra" placeholder="2026/27"></div></div><br><button class="primary">Salvar plantio</button></form>`,rows,["Data","Talhão","Cultura","Variedade","População",""])}
-function maquinas(){state.maquinas=state.maquinas||[];let rows=state.maquinas.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.tipo||"-")}</td><td>${esc(x.modelo||"-")}</td><td>${esc(x.horas||"-")}</td><td><button class="danger" onclick="del('maquinas',${i})">Excluir</button></td></tr>`).join("");return listPage("maquinas","Máquinas","Cadastre tratores, colheitadeiras e implementos.","+ Nova Máquina",`<form onsubmit="addMaquina(event)"><div class="form"><div class="field"><label>Nome *</label><input id="mnome" required placeholder="Ex.: S550"></div><div class="field"><label>Tipo</label><input id="mtipo" placeholder="Colheitadeira"></div><div class="field"><label>Modelo</label><input id="mmodelo"></div><div class="field"><label>Horas atuais</label><input id="mhoras" type="number" step="0.1"></div></div><br><button class="primary">Salvar máquina</button></form>`,rows,["Máquina","Tipo","Modelo","Horas",""])}
-function diesel(){state.diesel=state.diesel||[];let maq=state.maquinas?.map(m=>`<option>${esc(m.nome)}</option>`).join("")||"<option>-</option>";let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>-</option>";let rows=state.diesel.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.maquina)}</td><td>${esc(x.litros)} L</td><td>${esc(x.talhao||"-")}</td><td><button class="danger" onclick="del('diesel',${i})">Excluir</button></td></tr>`).join("");return listPage("diesel","Diesel","Controle abastecimentos e vincule ao talhão quando desejar.","+ Abastecimento",`<form onsubmit="addDiesel(event)"><div class="form"><div class="field"><label>Data *</label><input id="ddata" type="date" required></div><div class="field"><label>Máquina</label><select id="dmaquina">${maq}</select></div><div class="field"><label>Litros *</label><input id="dlitros" type="number" step="0.01" required></div><div class="field"><label>Valor por litro</label><input id="dvalor" type="number" step="0.01"></div><div class="field"><label>Talhão (opcional)</label><select id="dtalhao"><option value="">Não vincular</option>${tal}</select></div></div><br><button class="primary">Salvar abastecimento</button></form>`,rows,["Data","Máquina","Litros","Talhão",""])}
-function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${x.valor?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="danger" onclick="del('estoque',${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
-function custos(){state.custos=state.custos||[];let total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);let rows=state.custos.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.categoria||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td><button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`).join("");return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Registre despesas da operação.","+ Novo Custo",`<form onsubmit="addCusto(event)"><div class="form"><div class="field"><label>Data *</label><input id="cdata" type="date" required></div><div class="field"><label>Descrição *</label><input id="cdesc" required></div><div class="field"><label>Categoria</label><select id="ccat"><option>Insumos</option><option>Máquinas</option><option>Manutenção</option><option>Mão de obra</option><option>Frete</option><option>Outros</option></select></div><div class="field"><label>Valor (R$) *</label><input id="cvalor" type="number" step="0.01" required></div></div><br><button class="primary">Salvar custo</button></form>`,rows,["Data","Descrição","Categoria","Valor",""])}
+function plantio(){state.plantio=state.plantio||[];let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>Cadastre um talhão primeiro</option>";let rows=state.plantio.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.cultura)}</td><td>${esc(x.variedade||"-")}</td><td>${esc(x.populacao||"-")}</td><td><button class="secondary" onclick="editar('plantio',${i})">Editar</button> <button class="danger" onclick="del('plantio',${i})">Excluir</button></td></tr>`).join("");return listPage("plantio","Plantio","Registre o plantio por talhão.","+ Registrar Plantio",`<form onsubmit="addPlantio(event)"><div class="form"><div class="field"><label>Data *</label><input id="pdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="ptalhao">${opts}</select></div><div class="field"><label>Cultura *</label><select id="pcultura"><option>Soja</option><option>Milho</option><option>Algodão</option><option>Outra</option></select></div><div class="field"><label>Variedade / híbrido</label><input id="pvar"></div><div class="field"><label>População / sementes ha</label><input id="ppop"></div><div class="field"><label>Safra</label><input id="psafra" placeholder="2026/27"></div></div><br><button class="primary">Salvar plantio</button></form>`,rows,["Data","Talhão","Cultura","Variedade","População",""])}
+function maquinas(){state.maquinas=state.maquinas||[];let rows=state.maquinas.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.tipo||"-")}</td><td>${esc(x.modelo||"-")}</td><td>${esc(x.horas||"-")}</td><td><button class="secondary" onclick="editar('maquinas',${i})">Editar</button> <button class="danger" onclick="del('maquinas',${i})">Excluir</button></td></tr>`).join("");return listPage("maquinas","Máquinas","Cadastre tratores, colheitadeiras e implementos.","+ Nova Máquina",`<form onsubmit="addMaquina(event)"><div class="form"><div class="field"><label>Nome *</label><input id="mnome" required placeholder="Ex.: S550"></div><div class="field"><label>Tipo</label><input id="mtipo" placeholder="Colheitadeira"></div><div class="field"><label>Modelo</label><input id="mmodelo"></div><div class="field"><label>Horas atuais</label><input id="mhoras" type="number" step="0.1"></div></div><br><button class="primary">Salvar máquina</button></form>`,rows,["Máquina","Tipo","Modelo","Horas",""])}
+function diesel(){state.diesel=state.diesel||[];let maq=state.maquinas?.map(m=>`<option>${esc(m.nome)}</option>`).join("")||"<option>-</option>";let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>-</option>";let rows=state.diesel.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.maquina)}</td><td>${esc(x.litros)} L</td><td>${esc(x.talhao||"-")}</td><td><button class="secondary" onclick="editar('diesel',${i})">Editar</button> <button class="danger" onclick="del('diesel',${i})">Excluir</button></td></tr>`).join("");return listPage("diesel","Diesel","Controle abastecimentos e vincule ao talhão quando desejar.","+ Abastecimento",`<form onsubmit="addDiesel(event)"><div class="form"><div class="field"><label>Data *</label><input id="ddata" type="date" required></div><div class="field"><label>Máquina</label><select id="dmaquina">${maq}</select></div><div class="field"><label>Litros *</label><input id="dlitros" type="number" step="0.01" required></div><div class="field"><label>Valor por litro</label><input id="dvalor" type="number" step="0.01"></div><div class="field"><label>Talhão (opcional)</label><select id="dtalhao"><option value="">Não vincular</option>${tal}</select></div></div><br><button class="primary">Salvar abastecimento</button></form>`,rows,["Data","Máquina","Litros","Talhão",""])}
+function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${x.valor?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="movEstoque(${i})">Movimentar</button> <button class="secondary" onclick="editar('estoque',${i})">Editar</button> <button class="danger" onclick="del('estoque',${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div><div class="field"><label>Lote</label><input id="elote"></div><div class="field full"><label>Foto da nota</label>
+<div class="cameraBox"><input id="efoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'epreview')">
+<img id="epreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerNotaEstoque()">📷 Ler nota pela câmera</button></div>
+<div id="eocrstatus" class="ocrStatus">Fotografe a nota e toque em “Ler nota”. Confira os campos antes de salvar.</div></div></div></div><br><button class="primary">Salvar produto</button></form>`,rows,["Produto","Categoria","Quantidade","Valor",""])}
+function custos(){state.custos=state.custos||[];let total=state.custos.reduce((s,x)=>s+Number(x.valor||0),0)+(state.diesel||[]).reduce((s,x)=>s+(Number(x.litros||0)*Number(x.valor||0)),0);let rows=state.custos.map((x,i)=>{let t=state.talhoes.find(t=>t.nome===x.talhao),ha=Number(t?.area||0),pha=ha?Number(x.valor||0)/ha:0;return `<tr><td>${esc(x.data)}</td><td>${esc(x.descricao)}</td><td>${esc(x.talhao||"-")}</td><td>R$ ${Number(x.valor||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td><td>${ha?"R$ "+pha.toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="editar('custos',${i})">Editar</button> <button class="danger" onclick="del('custos',${i})">Excluir</button></td></tr>`).join("");return `<div class="summary"><div class="card"><div class="muted">Custos registrados</div><div class="num money">R$ ${total.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div></div></div>`+listPage("custos","Custos","Registre despesas da operação.","+ Novo Custo",`<form onsubmit="addCusto(event)"><div class="form"><div class="field"><label>Data *</label><input id="cdata" type="date" required></div><div class="field"><label>Descrição *</label><input id="cdesc" required></div><div class="field"><label>Categoria</label><select id="ccat"><option>Insumos</option><option>Máquinas</option><option>Manutenção</option><option>Mão de obra</option><option>Frete</option><option>Outros</option></select></div><div class="field"><label>Valor (R$) *</label><input id="cvalor" type="number" step="0.01" required></div></div><br><button class="primary">Salvar custo</button></form>`,rows,["Data","Descrição","Talhão","Valor","R$/ha",""])}
 function aplicacoes(){
-let opts=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("")||"<option>Cadastre um talhão primeiro</option>";
-let rows=state.aplicacoes.map((a,i)=>`<tr><td>${esc(a.data)}</td><td>${esc(a.talhao)}</td><td>${esc(a.produto)}</td><td>${esc(a.dose)}</td><td><button class="danger" onclick="del('aplicacoes',${i})">Excluir</button></td></tr>`).join("");
-return listPage("aplicacoes","Aplicações","Registre pulverizações e vincule ao talhão.","+ Nova Aplicação",`<form onsubmit="addAplicacao(event)"><div class="form"><div class="field"><label>Data *</label><input id="adata" type="date" required></div><div class="field"><label>Talhão *</label><select id="atalhao">${opts}</select></div><div class="field"><label>Produto *</label><input id="aproduto" required placeholder="Produto"></div><div class="field"><label>Dose</label><input id="adose" placeholder="Ex.: 0,5 L/ha"></div><div class="field full"><label>Observações</label><textarea id="aobs" rows="2"></textarea></div></div><br><button class="primary">Salvar aplicação</button></form>`,rows,["Data","Talhão","Produto","Dose",""])}
+state.estoque=state.estoque||[];
+let opts=state.talhoes.map(t=>`<option value="${esc(t.nome)}">${esc(t.nome)}</option>`).join("")||"<option value=''>Cadastre um talhão primeiro</option>";
+let produtos=state.estoque.filter(x=>Number(x.quantidade||0)>0).map((x,i)=>`<option value="${i}">${esc(x.produto)} — ${esc(x.quantidade)} ${esc(x.unidade)}</option>`).join("");
+let rows=state.aplicacoes.map((a,i)=>`<tr><td>${esc(a.data)}</td><td>${esc(a.talhao)}</td><td>${esc(a.produtos?a.produtos.map(p=>p.produto).join(", "):a.produto)}</td><td>${a.custo!=null?"R$ "+Number(a.custo).toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="danger" onclick="del('aplicacoes',${i})">Excluir</button></td></tr>`).join("");
+return listPage("aplicacoes","Aplicações","Adicione vários produtos na mesma aplicação. O estoque e os custos são atualizados automaticamente.","+ Nova Aplicação",`<form onsubmit="addAplicacao(event)"><div class="form"><div class="field"><label>Data *</label><input id="adata" type="date" required></div><div class="field"><label>Talhão *</label><select id="atalhao">${opts}</select></div></div><div class="panel"><b>Produtos da aplicação</b><div id="produtosAplicacao"></div><br><button type="button" class="secondary" onclick="addLinhaProduto()">+ Adicionar produto</button></div><div class="field full"><label>Observações</label><textarea id="aobs" rows="2"></textarea></div><br><button class="primary">Salvar aplicação</button></form>`,rows,["Data","Talhão","Produtos","Custo",""])}
+function addLinhaProduto(){
+ const box=document.getElementById("produtosAplicacao"); if(!box)return;
+ const op=(state.estoque||[]).map((x,i)=>`<option value="${i}">${esc(x.produto)} — ${esc(x.quantidade)} ${esc(x.unidade)}</option>`).join("");
+ box.insertAdjacentHTML("beforeend",`<div class="form produtoLinha" style="margin-top:10px"><div class="field"><label>Produto</label><select class="aprProduto">${op}</select></div><div class="field"><label>Dose/ha</label><input class="aprDose" type="number" step="0.001" min="0" required></div></div>`);
+}
+function colheita(){state.colheita=state.colheita||[];let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("");let rows=state.colheita.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.cultura)}</td><td>${esc(x.peso)} kg</td><td><button class="secondary" onclick="editar('colheita',${i})">Editar</button> <button class="danger" onclick="del('colheita',${i})">Excluir</button></td></tr>`).join("");return listPage("colheita","Colheita","Registre a produção por talhão.","+ Nova Colheita",`<form onsubmit="addColheita(event)"><div class="form"><div class="field"><label>Data *</label><input id="hdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="htalhao">${tal}</select></div><div class="field"><label>Cultura</label><select id="hcultura"><option>Soja</option><option>Milho</option><option>Algodão</option></select></div><div class="field"><label>Peso líquido (kg) *</label><input id="hpeso" type="number" step="0.01" required></div></div><br><button class="primary">Salvar colheita</button></form>`,rows,["Data","Talhão","Cultura","Peso",""])}
+function romaneios(){state.romaneios=state.romaneios||[];let tal=state.talhoes.map(t=>`<option>${esc(t.nome)}</option>`).join("");let rows=state.romaneios.map((x,i)=>`<tr><td>${esc(x.data)}</td><td>${esc(x.talhao)}</td><td>${esc(x.destino||"-")}</td><td>${esc(x.bruto)} kg</td><td>${esc(x.liquido)} kg</td><td><button class="secondary" onclick="editar('romaneios',${i})">Editar</button> <button class="danger" onclick="del('romaneios',${i})">Excluir</button></td></tr>`).join("");return listPage("romaneios","Romaneios","Controle cargas, descontos e destino por talhão.","+ Novo Romaneio",`<form onsubmit="addRomaneio(event)"><div class="form"><div class="field"><label>Data *</label><input id="rdata" type="date" required></div><div class="field"><label>Talhão *</label><select id="rtalhao">${tal}</select></div><div class="field"><label>Destino</label><input id="rdestino"></div><div class="field"><label>Peso bruto (kg)</label><input id="rbruto" type="number" step="0.01"></div><div class="field"><label>Peso líquido (kg) *</label><input id="rliquido" type="number" step="0.01" required></div><div class="field"><label>Descontos / descrição</label><input id="rdesc"></div><div class="field full"><label>Foto / comprovante</label>
+<div class="cameraBox"><input id="rfoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'rpreview')">
+<img id="rpreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerRomaneio()">📷 Ler romaneio pela câmera</button></div>
+<div id="rocrstatus" class="ocrStatus">Fotografe o ticket e toque em “Ler romaneio”. Confira os dados antes de salvar.</div></div></div></div><br><button class="primary">Salvar romaneio</button></form>`,rows,["Data","Talhão","Destino","Bruto","Líquido",""])}
+async function addColheita(e){e.preventDefault();state.colheita=state.colheita||[];state.colheita.push({data:hdata.value,talhao:htalhao.value,cultura:hcultura.value,peso:hpeso.value});await salvarEstado();go("colheita")}
+async function addRomaneio(e){e.preventDefault();state.romaneios=state.romaneios||[];state.romaneios.push({data:rdata.value,talhao:rtalhao.value,destino:rdestino.value,bruto:rbruto.value,liquido:rliquido.value,desconto:rdesc.value});await salvarEstado();go("romaneios")}
+async function movEstoque(i){
+ const x=state.estoque[i];if(!x)return;
+ const tipo=prompt("Digite E para ENTRADA ou S para SAÍDA:","E");if(!tipo)return;
+ const q=Number(prompt("Quantidade:", "0"));if(!q||q<=0)return;
+ const antes=Number(x.quantidade||0);
+ if(tipo.toUpperCase()==="S"&&q>antes){alert("Quantidade maior que o estoque disponível.");return}
+ x.quantidade=tipo.toUpperCase()==="S"?antes-q:antes+q;
+ state.movimentacoes=state.movimentacoes||[];state.movimentacoes.push({data:new Date().toISOString(),produto:x.produto,tipo:tipo.toUpperCase()==="S"?"Saída":"Entrada",quantidade:q});
+ await salvarEstado();render();
+}
+async function editar(type,i){
+ const x=state[type]?.[i];if(!x)return;
+ const campos=Object.keys(x).filter(k=>!["id","origem","aplicacaoId","produtos"].includes(k)&&typeof x[k]!=="object");
+ for(const k of campos){const v=prompt(`Editar ${k}:`,x[k]??"");if(v!==null)x[k]=v}
+ await salvarEstado();render();
+}
+function filtrarTabela(input){
+ const termo=input.value.toLowerCase(),tbody=input.closest(".panel").querySelector("tbody");
+ if(!tbody)return; [...tbody.querySelectorAll("tr")].forEach(tr=>tr.style.display=tr.innerText.toLowerCase().includes(termo)?"":"none");
+}
+function exportarBackup(){
+ const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="terra-santa-backup-"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(a.href);
+}
+async function importarBackup(e){
+ const f=e.target.files?.[0];if(!f)return;
+ if(!confirm("Importar este backup? Os dados atuais do aplicativo serão substituídos.")){e.target.value="";return}
+ try{
+   const d=JSON.parse(await f.text());
+   if(!d||typeof d!=="object")throw new Error("Arquivo inválido");
+   const fazendasAtuais=state.fazendas||[];
+   state={...d,fazendas:fazendasAtuais};
+   await salvarEstado();alert("Backup importado com sucesso.");render();
+ }catch(err){alert("Não foi possível importar o backup: "+err.message)}
+ e.target.value="";
+}
+
+function preverFoto(input,imgId){
+ const f=input.files?.[0],img=document.getElementById(imgId); if(!f||!img)return;
+ img.src=URL.createObjectURL(f);img.style.display="block";
+}
+async function reconhecerImagem(inputId,statusId){
+ const f=document.getElementById(inputId)?.files?.[0],st=document.getElementById(statusId);
+ if(!f){alert("Primeiro tire uma foto ou escolha uma imagem.");return null}
+ if(typeof Tesseract==="undefined"){alert("A leitura automática precisa de internet para carregar o leitor.");return null}
+ st.textContent="Lendo a imagem… aguarde.";
+ try{
+   const r=await Tesseract.recognize(f,"por",{logger:m=>{if(m.status==="recognizing text")st.textContent=`Lendo… ${Math.round((m.progress||0)*100)}%`}});
+   st.textContent="Leitura concluída. Confira os campos antes de salvar.";
+   return r.data.text||"";
+ }catch(e){st.textContent="Não consegui ler esta foto. Você pode preencher manualmente.";return null}
+}
+function numeroBR(s){if(!s)return null;return Number(String(s).replace(/\./g,"").replace(",","."))}
+function acharValor(texto,rotulos){
+ for(const r of rotulos){
+   const m=texto.match(new RegExp(r+"[^\\d]{0,18}([\\d\\.]+[,\\.]\\d{2})","i"));
+   if(m)return numeroBR(m[1]);
+ } return null;
+}
+async function lerNotaEstoque(){
+ const t=await reconhecerImagem("efoto","eocrstatus");if(!t)return;
+ const nota=t.match(/(?:NF[-\s]?E|NOTA|N[º°O]?\s*NOTA)[^\d]{0,15}(\d{3,})/i);
+ const lote=t.match(/LOTE[^\w]{0,10}([A-Z0-9\-\/]+)/i);
+ const total=acharValor(t,["VALOR\\s*TOTAL","TOTAL\\s*DA\\s*NOTA","TOTAL"]);
+ if(nota&&document.getElementById("enota"))enota.value=nota[1];
+ if(lote&&document.getElementById("elote"))elote.value=lote[1];
+ if(total!=null&&document.getElementById("evalor"))evalor.value=total;
+ const linhas=t.split(/\n/).map(x=>x.trim()).filter(x=>x.length>3);
+ const candidata=linhas.find(x=>/[A-Za-zÁ-ú]{4,}/.test(x)&&!/(nota|cnpj|cliente|total|chave|endereço|telefone)/i.test(x));
+ if(candidata&&document.getElementById("eproduto")&&!eproduto.value)eproduto.value=candidata.slice(0,80);
+}
+async function lerRomaneio(){
+ const t=await reconhecerImagem("rfoto","rocrstatus");if(!t)return;
+ const bruto=t.match(/(?:PESO\s*)?BRUTO[^\d]{0,18}([\d\.,]+)/i);
+ const liquido=t.match(/(?:PESO\s*)?L[IÍ]QUIDO[^\d]{0,18}([\d\.,]+)/i);
+ const data=t.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/);
+ if(bruto&&document.getElementById("rbruto"))rbruto.value=numeroBR(bruto[1]);
+ if(liquido&&document.getElementById("rliquido"))rliquido.value=numeroBR(liquido[1]);
+ if(data&&document.getElementById("rdata"))rdata.value=`${data[3]}-${data[2]}-${data[1]}`;
+ const dest=t.match(/(?:DESTINO|ARMAZ[EÉ]M|CLIENTE)[^\n:]*[:\-]?\s*([^\n]+)/i);
+ if(dest&&document.getElementById("rdestino")&&!rdestino.value)rdestino.value=dest[1].trim().slice(0,80);
+ const desc=t.match(/(?:DESCONTO|IMPUREZA|UMIDADE)[^\n]*/ig);
+ if(desc&&document.getElementById("rdesc"))rdesc.value=desc.join(" | ").slice(0,180);
+}
 function generic(title,icon,desc){return `<div class="hero"><h1>${icon} ${title}</h1><p>${desc}</p></div><div class="grid">${["Cadastros","Operações","Histórico","Indicadores"].map(x=>`<div class="card"><b>${x}</b><p class="muted">Módulo preparado para a próxima etapa.</p></div>`).join("")}</div>`}
 async function addFarm(e){
   e.preventDefault();
@@ -141,15 +250,32 @@ async function addTalhao(e){
   try{await salvarEstado();go("talhoes")}catch(erro){alert("Erro ao sincronizar talhão: "+erro.message)}
 }
 async function addAplicacao(e){
-  e.preventDefault();
-  state.aplicacoes.push({data:adata.value,talhao:atalhao.value,produto:aproduto.value,dose:adose.value,obs:aobs.value});
-  try{await salvarEstado();go("aplicacoes")}catch(erro){alert("Erro ao sincronizar aplicação: "+erro.message)}
+ e.preventDefault(); state.estoque=state.estoque||[];state.custos=state.custos||[];
+ const talhao=state.talhoes.find(t=>t.nome===atalhao.value), area=Number(talhao?.area||0);
+ if(!talhao||!area){alert("Selecione um talhão com área cadastrada.");return}
+ const linhas=[...document.querySelectorAll(".produtoLinha")];
+ if(!linhas.length){alert("Adicione pelo menos um produto.");return}
+ let produtos=[],custoTotal=0;
+ for(const l of linhas){
+   const idx=Number(l.querySelector(".aprProduto").value),dose=Number(l.querySelector(".aprDose").value),item=state.estoque[idx];
+   if(!item||!dose){alert("Confira produto e dose.");return}
+   const qtd=dose*area,disp=Number(item.quantidade||0);
+   if(qtd>disp){alert(`Estoque insuficiente de ${item.produto}. Necessário ${qtd.toLocaleString("pt-BR")} ${item.unidade}; disponível ${disp.toLocaleString("pt-BR")} ${item.unidade}.`);return}
+   const valor=Number(item.valor||0),unit=disp?valor/disp:0,custo=qtd*unit;
+   produtos.push({produto:item.produto,dose,quantidade:qtd,unidade:item.unidade,custo});
+   custoTotal+=custo;
+ }
+ for(const p of produtos){const item=state.estoque.find(x=>x.produto===p.produto);item.quantidade=Number(item.quantidade||0)-p.quantidade;item.valor=Math.max(0,Number(item.valor||0)-p.custo)}
+ const id="apl_"+Date.now();
+ state.aplicacoes.push({id,data:adata.value,talhao:atalhao.value,area,produtos,custo:custoTotal,obs:aobs.value});
+ state.custos.push({id:"custo_"+id,origem:"aplicacao",aplicacaoId:id,data:adata.value,descricao:`Aplicação — ${atalhao.value}`,categoria:"Insumos",valor:custoTotal,talhao:atalhao.value});
+ try{await salvarEstado();go("aplicacoes")}catch(erro){alert("Erro ao sincronizar aplicação: "+erro.message)}
 }
 async function addSafra(e){e.preventDefault();state.safras.push({nome:snome.value,cultura:scultura.value,inicio:sinicio.value,fim:sfim.value});try{await salvarEstado();go("safras")}catch(erro){alert("Erro ao sincronizar safra: "+erro.message)}}
 async function addPlantio(e){e.preventDefault();state.plantio=state.plantio||[];state.plantio.push({data:pdata.value,talhao:ptalhao.value,cultura:pcultura.value,variedade:pvar.value,populacao:ppop.value,safra:psafra.value});try{await salvarEstado();go("plantio")}catch(erro){alert("Erro ao sincronizar plantio: "+erro.message)}}
 async function addMaquina(e){e.preventDefault();state.maquinas=state.maquinas||[];state.maquinas.push({nome:mnome.value,tipo:mtipo.value,modelo:mmodelo.value,horas:mhoras.value});try{await salvarEstado();go("maquinas")}catch(erro){alert("Erro ao sincronizar máquina: "+erro.message)}}
 async function addDiesel(e){e.preventDefault();state.diesel=state.diesel||[];state.diesel.push({data:ddata.value,maquina:dmaquina.value,litros:dlitros.value,valor:dvalor.value,talhao:dtalhao.value});try{await salvarEstado();go("diesel")}catch(erro){alert("Erro ao sincronizar abastecimento: "+erro.message)}}
-async function addEstoque(e){e.preventDefault();state.estoque=state.estoque||[];state.estoque.push({produto:eproduto.value,categoria:ecategoria.value,quantidade:eqtd.value,unidade:eunidade.value,valor:evalor.value,nota:enota.value});try{await salvarEstado();go("estoque")}catch(erro){alert("Erro ao sincronizar estoque: "+erro.message)}}
+async function addEstoque(e){e.preventDefault();state.estoque=state.estoque||[];state.estoque.push({produto:eproduto.value,categoria:ecategoria.value,quantidade:eqtd.value,unidade:eunidade.value,valor:evalor.value,nota:enota.value,lote:elote.value});try{await salvarEstado();go("estoque")}catch(erro){alert("Erro ao sincronizar estoque: "+erro.message)}}
 async function addCusto(e){e.preventDefault();state.custos=state.custos||[];state.custos.push({data:cdata.value,descricao:cdesc.value,categoria:ccat.value,valor:cvalor.value});try{await salvarEstado();go("custos")}catch(erro){alert("Erro ao sincronizar custo: "+erro.message)}}
 async function del(type,i){
   if(!confirm("Excluir este registro?")) return;
@@ -161,6 +287,14 @@ async function del(type,i){
       await carregarFazendas();
       render();
       return;
+    }
+    if(type==="aplicacoes"){
+      const a=state.aplicacoes[i];
+      if(a&&a.id&&a.quantidade!=null){
+        const item=(state.estoque||[]).find(x=>x.produto===a.produto);
+        if(item){item.quantidade=Number(item.quantidade||0)+Number(a.quantidade||0);item.valor=Number(item.valor||0)+Number(a.custo||0);}
+        state.custos=(state.custos||[]).filter(c=>c.aplicacaoId!==a.id);
+      }
     }
     state[type].splice(i,1);
     await salvarEstado();
@@ -182,6 +316,8 @@ else if(page==="maquinas")el.innerHTML=maquinas();
 else if(page==="diesel")el.innerHTML=diesel();
 else if(page==="estoque")el.innerHTML=estoque();
 else if(page==="custos")el.innerHTML=custos();
+else if(page==="colheita")el.innerHTML=colheita();
+else if(page==="romaneios")el.innerHTML=romaneios();
 else {let m=modules.find(x=>x[0]===page)||modules[0];el.innerHTML=generic(m[2],m[1],"Estrutura do módulo Terra Santa.");}
 }
 async function carregarFazendas(){
