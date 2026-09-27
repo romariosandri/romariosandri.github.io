@@ -241,6 +241,8 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
   .menu button.active{background:linear-gradient(90deg,#168a4c,#43b04c)!important;color:#fff!important;box-shadow:none!important;border-left:3px solid #d9f29d!important}
   .top .logout{position:fixed!important;right:20px!important;top:18px!important}
 }
+
+.syncBadge{position:fixed;right:14px;bottom:14px;z-index:9999;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;box-shadow:0 4px 16px #0002;background:#fff;color:#173d2c}.syncBadge.offline{background:#fff1f1;color:#9b1c1c}.syncBadge.pending{background:#fff7df;color:#7a5200}.syncBadge.online{background:#eaf7ef;color:#176b3a}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
@@ -250,6 +252,8 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
   .top .terraLogo, .top .logo, .top .brand{display:none!important;}
   .top{background:transparent!important;background-image:none!important;}
 }
+
+.syncBadge{position:fixed;right:14px;bottom:14px;z-index:9999;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;box-shadow:0 4px 16px #0002;background:#fff;color:#173d2c}.syncBadge.offline{background:#fff1f1;color:#9b1c1c}.syncBadge.pending{background:#fff7df;color:#7a5200}.syncBadge.online{background:#eaf7ef;color:#176b3a}
 </style>
 
 <style id="terra-santa-fundo-lateral-usuario">
@@ -265,6 +269,8 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
   .top,.menu{background:transparent !important;background-image:none !important;}
   .top .terraLogo,.top .logo,.top .brand{display:none !important;}
 }
+
+.syncBadge{position:fixed;right:14px;bottom:14px;z-index:9999;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;box-shadow:0 4px 16px #0002;background:#fff;color:#173d2c}.syncBadge.offline{background:#fff1f1;color:#9b1c1c}.syncBadge.pending{background:#fff7df;color:#7a5200}.syncBadge.online{background:#eaf7ef;color:#176b3a}
 </style>
 </head>
 <body>
@@ -316,7 +322,12 @@ function telaLogin(){
 async function sair(){salvarAuth(null);location.hash="";telaLogin()}
 async function iniciarApp(){
  document.querySelector(".top").style.display="flex";document.getElementById("menu").style.display="flex";document.getElementById("logoutBtn").style.display="block";
- try{await Promise.all([carregarFazendas(),carregarEstado()]);render()}catch(e){console.error(e);if(String(e.message).includes("JWT")){salvarAuth(null);telaLogin()}else{alert("Não foi possível sincronizar os dados.")}}
+ atualizarStatusSync();
+ if(!navigator.onLine){render();return}
+ try{
+   if(temSyncPendente())await sincronizarPendentes();
+   await Promise.all([carregarFazendas(),carregarEstado()]);render();atualizarStatusSync();
+ }catch(e){console.error(e);if(String(e.message).includes("JWT")){salvarAuth(null);telaLogin()}else{render();atualizarStatusSync()}}
 }
 
 const modules=[
@@ -324,10 +335,29 @@ const modules=[
 ];
 let state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');
 function saveLocal(){localStorage.setItem("terraSanta",JSON.stringify(state))}
+function temSyncPendente(){return localStorage.getItem("terraSantaSyncPendente")==="1"}
+function marcarSyncPendente(v=true){if(v)localStorage.setItem("terraSantaSyncPendente","1");else localStorage.removeItem("terraSantaSyncPendente");atualizarStatusSync()}
+function atualizarStatusSync(){
+ let b=document.getElementById("syncStatusTerraSanta");
+ if(!b){b=document.createElement("div");b.id="syncStatusTerraSanta";b.className="syncBadge";document.body.appendChild(b)}
+ if(!navigator.onLine){b.className="syncBadge offline";b.textContent="🔴 Offline • dados salvos no celular"}
+ else if(temSyncPendente()){b.className="syncBadge pending";b.textContent="⏳ Aguardando sincronização"}
+ else{b.className="syncBadge online";b.textContent="🟢 Sincronizado"}
+}
+async function enviarEstadoLocal(){
+ const {fazendas,...dados}=state;
+ await supabaseRequest("app_state?id=eq.1",{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({dados})});
+ marcarSyncPendente(false);
+}
 async function salvarEstado(){
-  saveLocal();
-  const {fazendas,...dados}=state;
-  await supabaseRequest("app_state?id=eq.1",{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({dados})});
+ saveLocal(); marcarSyncPendente(true);
+ if(!navigator.onLine)return false;
+ try{await enviarEstadoLocal();return true}catch(e){console.warn("Salvo localmente; sincronização pendente",e);atualizarStatusSync();return false}
+}
+async function sincronizarPendentes(){
+ atualizarStatusSync();
+ if(!navigator.onLine||!temSyncPendente())return;
+ try{await enviarEstadoLocal();atualizarStatusSync()}catch(e){console.warn("Sincronização pendente",e);atualizarStatusSync()}
 }
 async function carregarEstado(){
   const remoto=await supabaseRequest("app_state?id=eq.1&select=dados");
@@ -887,13 +917,17 @@ async function atualizarAoVoltar(){
   const agora=Date.now();
   if(agora-ultimaSincronizacao<1500)return;
   ultimaSincronizacao=agora;
+  if(!navigator.onLine){atualizarStatusSync();render();return;}
   try{
+    if(temSyncPendente())await sincronizarPendentes();
     await Promise.all([carregarFazendas(),carregarEstado()]);
-    render();
-  }catch(erro){console.error("Erro ao atualizar dados:",erro);}
+    render();atualizarStatusSync();
+  }catch(erro){console.error("Erro ao atualizar dados:",erro);atualizarStatusSync();}
 }
 window.addEventListener("pageshow",atualizarAoVoltar);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")atualizarAoVoltar();});
+window.addEventListener("offline",atualizarStatusSync);
+window.addEventListener("online",async()=>{atualizarStatusSync();await sincronizarPendentes();try{await Promise.all([carregarFazendas(),carregarEstado()]);render()}catch(e){console.warn(e)}atualizarStatusSync();});
 iniciar();
 
 
