@@ -609,13 +609,12 @@ function atualizarSaudacaoInicio(){
   const el=document.getElementById("saudacaoInicio");
   if(!el)return;
   const h=new Date().getHours();
-  el.textContent=h<12?"Bom dia!":h<18?"Boa tarde!":"Boa noite!";
+  const texto=h<12?"Bom dia!":h<18?"Boa tarde!":"Boa noite!";
+  if(el.textContent!==texto) el.textContent=texto;
 }
 
 setInterval(atualizarSaudacaoInicio,60000);
 
-const saudacaoObserver=new MutationObserver(()=>atualizarSaudacaoInicio());
-saudacaoObserver.observe(document.getElementById("app"),{childList:true,subtree:true});
 setTimeout(atualizarSaudacaoInicio,0);
 
 </script>
