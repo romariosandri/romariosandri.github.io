@@ -344,8 +344,29 @@ function atualizarStatusSync(){
  else if(temSyncPendente()){b.className="syncBadge pending";b.textContent="⏳ Aguardando sincronização"}
  else{b.className="syncBadge online";b.textContent="🟢 Sincronizado"}
 }
-function chaveRegistro(x,i){return String(x?.id||x?.compraId||x?.aplicacaoId||[x?.nota,x?.serie,x?.data,x?.produto,x?.talhao,x?.descricao,x?.comprador,i].join('|'))}
-function unirListas(a=[],b=[]){const m=new Map();[...b,...a].forEach((x,i)=>m.set(chaveRegistro(x,i),x));return [...m.values()]}
+function chaveRegistro(x,i){
+ if(x?.id)return 'id:'+String(x.id);
+ if(x?.compraItemId)return 'compraItem:'+String(x.compraItemId);
+ if(x?.compraId&&x?.produto)return 'compra:'+String(x.compraId)+'|'+chaveTexto(x.produto)+'|'+chaveTexto(x.unidade);
+ // Registros antigos sem ID: a chave precisa ser estável e NUNCA depender da posição na lista.
+ return 'legacy:'+chaveTexto([x?.nota,x?.serie,x?.dataNota||x?.data,x?.fornecedor,x?.produto,x?.unidade,x?.lote,x?.talhao,x?.descricao,x?.comprador].join('|'));
+}
+function unirListas(a=[],b=[]){const m=new Map();[...b,...a].forEach((x,i)=>{const k=chaveRegistro(x,i);if(!m.has(k))m.set(k,x);else{const ant=m.get(k);m.set(k,{...ant,...x,id:x?.id||ant?.id})}});return [...m.values()]}
+function corrigirDuplicadosEstoque(){
+ state.estoque=state.estoque||[];state.compras=state.compras||[];
+ const m=new Map(),saida=[];let removidos=0;
+ for(const x of state.estoque){
+   // Mesmo item da mesma compra/nota deve existir uma única vez. Não somar duplicatas de sincronização.
+   const k=x.compraItemId?'ci:'+x.compraItemId:(x.compraId?'c:'+x.compraId+'|'+chaveTexto(x.produto)+'|'+chaveTexto(x.unidade):((x.nota||x.fornecedor||x.dataNota)?'n:'+chaveTexto(x.nota)+'|'+chaveTexto(x.fornecedor)+'|'+String(x.dataNota||'')+'|'+chaveTexto(x.produto)+'|'+chaveTexto(x.unidade)+'|'+chaveTexto(x.lote):'id:'+chaveRegistro(x,0)));
+   if(!m.has(k)){m.set(k,x);saida.push(x);continue}
+   removidos++;const keep=m.get(k);
+   // Se houver compra de origem, restaura o valor original do item somente quando o saldo ainda corresponde à entrada inteira.
+   const c=(state.compras||[]).find(c=>c.id===(keep.compraId||x.compraId));
+   const it=c?.itens?.find(it=>it.id===(keep.compraItemId||x.compraItemId));
+   if(it&&Number(keep.quantidade||0)===Number(it.quantidade||0)){keep.valor=Number(it.valorTotal||0);keep.quantidade=Number(it.quantidade||0);keep.unidade=it.unidade||keep.unidade;keep.categoria=it.categoria||keep.categoria;keep.nota=c.nota||keep.nota;keep.fornecedor=c.fornecedor||keep.fornecedor}
+ }
+ state.estoque=saida;return removidos;
+}
 async function enviarEstadoLocal(){
  const remoto=await supabaseRequest("app_state?id=eq.1&select=dados"); const rd=Array.isArray(remoto)&&remoto[0]?remoto[0].dados||{}:{};
  const {fazendas,...local}=state,dados={...rd,...local};
@@ -379,6 +400,8 @@ async function carregarEstado(){
     state.safras=Array.isArray(state.safras)?state.safras:[];
     state.aplicacoes=Array.isArray(state.aplicacoes)?state.aplicacoes:[];
     for(const k of ["plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) state[k]=Array.isArray(state[k])?state[k]:[];
+    const corrigidos=corrigirDuplicadosEstoque();
+    if(corrigidos){console.warn('Terra Santa: '+corrigidos+' duplicata(s) de estoque removida(s).');try{await enviarEstadoLocal()}catch(e){console.warn('Limpeza salva localmente; sincronização pendente',e)}}
     saveLocal();
   }
 }
@@ -572,7 +595,7 @@ function addItemCompra(){document.getElementById('cpItens')?.insertAdjacentHTML(
 async function salvarCompra(){
  state.compras=state.compras||[];state.estoque=state.estoque||[];state.custos=state.custos||[];const nota=cpNota.value.trim(),serie=cpSerie.value.trim(),fornecedor=cpFornecedor.value.trim(),cnpj=cpCnpj.value.trim(),data=cpData.value;if(nota&&compraDuplicada(nota,serie,cnpj)){alert('⚠️ Esta nota já está em Compras.');return}const compraId='cmp_'+Date.now(),itens=[];let total=0,itemSeq=0;for(const row of document.querySelectorAll('#cpItens .notaItem')){const g=k=>row.querySelector(`[data-k="${k}"]`)?.value||'';const produto=g('produto').trim(),q=numeroIA(g('quantidade'))||0,vu=numeroIA(g('valorUnit'))||0;let vt=numeroIA(g('valorTotal'))||0;if(!vt&&q&&vu)vt=q*vu;if(!produto)continue;const itemId=compraId+'_item_'+(++itemSeq),it={id:itemId,produto,quantidade:q,unidade:g('unidade'),valorUnit:q?vt/q:vu,valorTotal:vt,categoria:g('categoria'),destino:g('destino')};itens.push(it);total+=vt;if(it.destino==='estoque'||it.destino==='diesel')state.estoque.push({id:'est_'+Date.now()+'_'+itemSeq,produto,categoria:it.categoria,quantidade:q,unidade:it.unidade,valor:vt,nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:itemId});else if(it.destino==='custo')state.custos.push({data,descricao:produto,categoria:it.categoria,valor:vt,safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:itemId})}if(!itens.length){alert('Nenhum item para salvar.');return}state.compras.push({id:compraId,nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});await salvarEstado();apagarRascunhoCompra();alert('Compra salva e itens enviados aos destinos escolhidos.');go('compras')}
 
-function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${Number.isFinite(Number(x.valor))&&Number(x.valor)>0?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2}):"-"}</td><td><button class="secondary" onclick="movEstoque(${i})">Movimentar</button> <button class="secondary" onclick="editarEstoque(${i})">Editar</button> <button class="danger" onclick="del('estoque',${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Acaricida</option><option>Nematicida</option><option>Adjuvante</option><option>Biológico</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div><div class="field"><label>Lote</label><input id="elote"></div><div class="field full"><label>Foto da nota</label>
+function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${Number.isFinite(Number(x.valor))&&Number(x.valor)>0?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})+`<div class="muted">${Number(x.quantidade||0)>0?'R$ '+(Number(x.valor)/Number(x.quantidade)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})+'/'+esc(x.unidade||'un'):''}</div>`:"-"}</td><td><button class="secondary" onclick="movEstoque(${i})">Movimentar</button> <button class="secondary" onclick="editarEstoque(${i})">Editar</button> <button class="danger" onclick="del('estoque',${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Acaricida</option><option>Nematicida</option><option>Adjuvante</option><option>Biológico</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div><div class="field"><label>Lote</label><input id="elote"></div><div class="field full"><label>Foto da nota</label>
 <div class="cameraBox"><input id="efoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'epreview')">
 <img id="epreview" class="cameraPreview"><div><button type="button" class="secondary" onclick="lerNotaEstoque()">📷 Ler e separar itens da nota</button></div>
 <div id="eocrstatus" class="ocrStatus">Fotografe a nota inteira. O Terra Santa tentará separar os produtos para conferência.</div>
