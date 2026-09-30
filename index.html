@@ -351,6 +351,18 @@ function chaveRegistro(x,i){
  // Registros antigos sem ID: a chave precisa ser estável e NUNCA depender da posição na lista.
  return 'legacy:'+chaveTexto([x?.nota,x?.serie,x?.dataNota||x?.data,x?.fornecedor,x?.produto,x?.unidade,x?.lote,x?.talhao,x?.descricao,x?.comprador].join('|'));
 }
+function marcarExcluido(tipo,item){
+ state._excluidos=state._excluidos&&typeof state._excluidos==="object"?state._excluidos:{};
+ const k=chaveRegistro(item,0);
+ const arr=Array.isArray(state._excluidos[tipo])?state._excluidos[tipo]:[];
+ if(!arr.includes(k))arr.push(k);
+ state._excluidos[tipo]=arr.slice(-2000);
+}
+function unirListasTipo(tipo,a=[],b=[],excluidos={}){
+ const apagados=new Set(Array.isArray(excluidos?.[tipo])?excluidos[tipo]:[]),m=new Map();
+ [...b,...a].forEach((x,i)=>{const k=chaveRegistro(x,i);if(apagados.has(k))return;if(!m.has(k))m.set(k,x);else{const ant=m.get(k);m.set(k,{...ant,...x,id:x?.id||ant?.id})}});
+ return [...m.values()];
+}
 function unirListas(a=[],b=[]){const m=new Map();[...b,...a].forEach((x,i)=>{const k=chaveRegistro(x,i);if(!m.has(k))m.set(k,x);else{const ant=m.get(k);m.set(k,{...ant,...x,id:x?.id||ant?.id})}});return [...m.values()]}
 function corrigirDuplicadosEstoque(){
  state.estoque=state.estoque||[];state.compras=state.compras||[];
@@ -370,7 +382,8 @@ function corrigirDuplicadosEstoque(){
 async function enviarEstadoLocal(){
  const remoto=await supabaseRequest("app_state?id=eq.1&select=dados"); const rd=Array.isArray(remoto)&&remoto[0]?remoto[0].dados||{}:{};
  const {fazendas,...local}=state,dados={...rd,...local};
- for(const k of ["talhoes","safras","aplicacoes","plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) if(Array.isArray(local[k])||Array.isArray(rd[k])) dados[k]=unirListas(local[k]||[],rd[k]||[]);
+ const excluidos={...(rd._excluidos||{})};for(const [tipo,arr] of Object.entries(local._excluidos||{}))excluidos[tipo]=[...new Set([...(excluidos[tipo]||[]),...(Array.isArray(arr)?arr:[])])].slice(-2000);dados._excluidos=excluidos;
+ for(const k of ["talhoes","safras","aplicacoes","plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) if(Array.isArray(local[k])||Array.isArray(rd[k])) dados[k]=unirListasTipo(k,local[k]||[],rd[k]||[],excluidos);
  await supabaseRequest("app_state?id=eq.1",{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({dados})}); state={...state,...dados,fazendas:state.fazendas||[]}; saveLocal(); marcarSyncPendente(false);
 }
 async function salvarEstado(){
@@ -544,7 +557,7 @@ async function addManutencao(e){
 
 function compras(){
  state.compras=state.compras||[];
- const rows=state.compras.map((x,i)=>`<tr><td>${esc(x.data||'-')}</td><td>${esc(x.fornecedor||'-')}</td><td>${esc(x.nota||'-')}</td><td>${(x.itens||[]).length}</td><td>R$ ${Number(x.valorTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td><button class="danger" onclick="del('compras',${i})">Excluir</button></td></tr>`).join('');
+ const rows=state.compras.map((x,i)=>`<tr><td>${esc(x.data||'-')}</td><td>${esc(x.fornecedor||'-')}</td><td>${esc(x.nota||'-')}</td><td>${(x.itens||[]).length}</td><td>R$ ${Number(x.valorTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td><button class="danger" onclick="excluirCompra(${i})">Excluir</button></td></tr>`).join('');
  return listPage('compras','Compras','Notas de diesel, peças, produtos, sementes, fertilizantes e outras compras entram primeiro aqui.','+ Nova Compra',`<div class="panel"><b>🧾 Novo lançamento de nota</b><div class="muted" style="margin:6px 0 10px">Escolha como deseja lançar. Foto ou arquivo passam pela IA e depois ficam disponíveis para conferência.</div><div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="primary" onclick="document.getElementById('compraCamera').click()">📷 Tirar foto</button><button type="button" class="secondary" onclick="document.getElementById('compraGaleria').click()">🖼️ Escolher foto</button><button type="button" class="secondary" onclick="document.getElementById('compraArquivo').click()">📄 Escolher arquivo</button><button type="button" class="secondary" onclick="novaCompraManual()">⌨️ Digitar manualmente</button></div><input id="compraCamera" type="file" accept="image/*" capture="environment" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraGaleria" type="file" accept="image/*" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraArquivo" type="file" accept="image/*,application/pdf" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraFoto" type="file" style="display:none"><img id="compraPreview" class="cameraPreview"><div id="compraStatus" class="ocrStatus">Escolha uma das quatro opções acima.</div></div><div id="compraReview" style="margin-top:12px"></div>`,rows,['Data','Fornecedor','Nota','Itens','Valor','']);
 }
 function selecionarDocumentoCompra(inp){const f=inp?.files?.[0];if(!f)return;const alvo=document.getElementById('compraFoto');try{const dt=new DataTransfer();dt.items.add(f);alvo.files=dt.files}catch(e){}if(f.type.startsWith('image/'))preverFoto(inp,'compraPreview');else{const im=document.getElementById('compraPreview');if(im)im.style.display='none'}const st=document.getElementById('compraStatus');if(st)st.textContent='Arquivo selecionado: '+f.name+' • iniciando leitura…';lerCompraIA(f)}
@@ -1000,29 +1013,23 @@ async function addCusto(e){
  try{await salvarEstado();go("custos")}catch(erro){alert("Erro ao sincronizar despesa: "+erro.message)}
 }
 async function excluirEstoque(i){
-  state.estoque=state.estoque||[];
-  const item=state.estoque[i];
-  if(!item){alert('Não encontrei este lançamento no estoque.');return;}
-  const nome=item.produto||'este item';
-  if(!confirm(`Excluir ${nome} do estoque?\n\nEsta ação remove este lançamento do estoque.`))return;
+  state.estoque=state.estoque||[];state.compras=state.compras||[];
+  const item=state.estoque[i];if(!item){alert('Não encontrei este lançamento no estoque.');return;}
+  if(!confirm(`Excluir ${item.produto||'este item'} do estoque?`))return;
   try{
-    const compraId=item.compraId, compraItemId=item.compraItemId;
-    state.estoque.splice(i,1);
-    if(compraId && compraItemId){
-      const compra=(state.compras||[]).find(c=>c.id===compraId);
-      const ci=compra?.itens?.find(x=>x.id===compraItemId);
-      if(compra && ci && confirm('Este item veio de uma nota em Compras.\n\nDeseja também remover este item da nota de compra?\n\nOK = remover também da compra\nCancelar = manter a nota e excluir somente do estoque')){
-        compra.itens=compra.itens.filter(x=>x.id!==compraItemId);
-        compra.valorTotal=compra.itens.reduce((a,x)=>a+Number(x.valorTotal||0),0);
-        if(!compra.itens.length){
-          const ciCompra=state.compras.indexOf(compra);
-          if(ciCompra>=0 && confirm('A nota ficou sem itens. Deseja excluir também a nota de Compras?')) state.compras.splice(ciCompra,1);
-        }
-      }
-    }
-    await salvarEstado();
-    render();
+    marcarExcluido('estoque',item);state.estoque.splice(i,1);
+    if(item.compraId&&item.compraItemId){const compra=state.compras.find(c=>c.id===item.compraId);const ci=compra?.itens?.find(x=>x.id===item.compraItemId);if(compra&&ci&&confirm('Este item veio de uma compra. Deseja remover também este item da nota em Compras?')){compra.itens=compra.itens.filter(x=>x.id!==item.compraItemId);compra.valorTotal=compra.itens.reduce((a,x)=>a+Number(x.valorTotal||0),0);if(!compra.itens.length){marcarExcluido('compras',compra);state.compras=state.compras.filter(c=>c!==compra);}}}
+    await salvarEstado();render();
   }catch(erro){alert('Erro ao excluir do estoque: '+erro.message);}
+}
+async function excluirCompra(i){
+ state.compras=state.compras||[];state.estoque=state.estoque||[];const compra=state.compras[i];if(!compra){alert('Não encontrei esta compra.');return;}
+ if(!confirm(`Excluir a nota ${compra.nota||''} de Compras?`))return;
+ try{
+   const relacionados=state.estoque.filter(e=>e.compraId&&e.compraId===compra.id);
+   if(relacionados.length&&confirm(`Esta compra possui ${relacionados.length} item(ns) no estoque. Deseja excluir também esses lançamentos do estoque?`)){for(const e of relacionados)marcarExcluido('estoque',e);state.estoque=state.estoque.filter(e=>!(e.compraId&&e.compraId===compra.id));}
+   marcarExcluido('compras',compra);state.compras.splice(i,1);await salvarEstado();render();
+ }catch(erro){alert('Erro ao excluir compra: '+erro.message);}
 }
 
 async function del(type,i){
@@ -1057,6 +1064,7 @@ async function del(type,i){
         state.custos=(state.custos||[]).filter(c=>c.aplicacaoId!==a.id);
       }
     }
+    const removido=state[type]?.[i];if(removido)marcarExcluido(type,removido);
     state[type].splice(i,1);
     await salvarEstado();
     render();
