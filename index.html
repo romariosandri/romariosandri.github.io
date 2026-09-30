@@ -675,38 +675,46 @@ async function movEstoque(i){
  state.movimentacoes=state.movimentacoes||[];state.movimentacoes.push({data:new Date().toISOString(),produto:x.produto,tipo:tipo.toUpperCase()==="S"?"Saída":"Entrada",quantidade:q});
  await salvarEstado();render();
 }
+function localizarOrigemEstoque(x){
+ let compra=null,item=null;
+ if(x?.origem==='compras'){
+   if(x.compraId)compra=(state.compras||[]).find(c=>c.id===x.compraId)||null;
+   if(compra&&x.compraItemId)item=(compra.itens||[]).find(it=>it.id===x.compraItemId)||null;
+   if(!item){
+     const cand=[];for(const c of (state.compras||[]))for(const it of (c.itens||[]))if(chaveTexto(c.nota)===chaveTexto(x.nota)&&chaveTexto(it.produto)===chaveTexto(x.produto))cand.push([c,it]);
+     if(cand.length===1){compra=cand[0][0];item=cand[0][1];x.compraId=compra.id;if(!item.id)item.id=(compra.id||'cmp_antiga')+'_item_'+Date.now();x.compraItemId=item.id}
+   }
+ }
+ return {compra,item};
+}
+function recalcularEdicaoEstoque(origem){
+ const qo=Number(document.getElementById('eeQtdOriginal')?.value||0),vu=Number(document.getElementById('eeUnit')?.value||0),vt=Number(document.getElementById('eeValorOriginal')?.value||0);
+ if(origem==='total'&&qo>0){document.getElementById('eeUnit').value=(vt/qo).toFixed(4)}
+ else if((origem==='qtd'||origem==='unit')&&qo>=0){document.getElementById('eeValorOriginal').value=(qo*vu).toFixed(2)}
+}
 function editarEstoque(i){
  const x=state.estoque?.[i];if(!x)return;
  document.getElementById('editarEstoqueModal')?.remove();
+ const {compra,item}=localizarOrigemEstoque(x);
+ const qtdAtual=Number(x.quantidade||0),valorAtual=Number(x.valor||0);
+ const qtdOriginal=Number(item?.quantidade??x.quantidade??0),valorOriginal=Number(item?.valorTotal??x.valor??0),unitOriginal=qtdOriginal?valorOriginal/qtdOriginal:Number(item?.valorUnit||0);
  const cats=['Herbicida','Fungicida','Inseticida','Acaricida','Nematicida','Adjuvante','Biológico','Defensivo','Fertilizante','Semente','Diesel','Peça','Pneu','Outro','Outros'];
  const uns=['L','kg','un','sacas','t','caixa','jogo'];
  const modal=document.createElement('div');modal.id='editarEstoqueModal';modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto';
- modal.innerHTML=`<div class="panel" style="width:min(760px,100%);max-height:92vh;overflow:auto;margin:auto"><div class="row"><b>Editar produto do estoque</b><button type="button" class="secondary" onclick="document.getElementById('editarEstoqueModal')?.remove()">Fechar</button></div><div class="form" style="margin-top:12px"><div class="field"><label>Produto</label><input id="eeProduto" value="${esc(x.produto||'')}"></div><div class="field"><label>Categoria</label><select id="eeCategoria">${cats.map(v=>`<option ${v===(x.categoria||'')?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Quantidade atual</label><input id="eeQtd" type="number" step="0.001" value="${esc(x.quantidade??'')}"></div><div class="field"><label>Unidade</label><select id="eeUnidade">${uns.map(v=>`<option ${v===(x.unidade||'')?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Valor atual do estoque (R$)</label><input id="eeValor" type="number" step="0.01" value="${esc(x.valor??'')}"></div><div class="field"><label>Nº da nota</label><input id="eeNota" value="${esc(x.nota||'')}"></div><div class="field"><label>Lote</label><input id="eeLote" value="${esc(x.lote||'')}"></div><div class="field"><label>Fornecedor</label><input id="eeFornecedor" value="${esc(x.fornecedor||'')}"></div></div><div class="muted" style="margin-top:10px">Se este item veio de Compras, nome, categoria, unidade, nota e fornecedor também serão corrigidos na compra de origem. Quantidade e valor atuais do estoque não alteram a quantidade/valor original da nota.</div><div style="margin-top:14px"><button type="button" class="primary" onclick="salvarEdicaoEstoque(${i})">Salvar alterações</button></div></div>`;
+ modal.innerHTML=`<div class="panel" style="width:min(800px,100%);max-height:92vh;overflow:auto;margin:auto"><div class="row"><b>Editar lançamento do estoque</b><button type="button" class="secondary" onclick="document.getElementById('editarEstoqueModal')?.remove()">Fechar</button></div><div class="form" style="margin-top:12px"><div class="field"><label>Produto</label><input id="eeProduto" value="${esc(x.produto||'')}"></div><div class="field"><label>Categoria</label><select id="eeCategoria">${cats.map(v=>`<option ${v===(x.categoria||'')?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Quantidade original da nota</label><input id="eeQtdOriginal" type="number" step="0.001" value="${qtdOriginal}" oninput="recalcularEdicaoEstoque('qtd')"></div><div class="field"><label>Unidade</label><select id="eeUnidade">${uns.map(v=>`<option ${v===(x.unidade||'')?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Preço unitário (R$)</label><input id="eeUnit" type="number" step="0.0001" value="${unitOriginal||''}" oninput="recalcularEdicaoEstoque('unit')"></div><div class="field"><label>Valor total da nota (R$)</label><input id="eeValorOriginal" type="number" step="0.01" value="${valorOriginal||''}" oninput="recalcularEdicaoEstoque('total')"></div><div class="field"><label>Saldo atual no estoque</label><input id="eeQtdAtual" type="number" step="0.001" value="${qtdAtual}"></div><div class="field"><label>Nº da nota</label><input id="eeNota" value="${esc(x.nota||compra?.nota||'')}"></div><div class="field"><label>Lote</label><input id="eeLote" value="${esc(x.lote||'')}"></div><div class="field"><label>Fornecedor</label><input id="eeFornecedor" value="${esc(x.fornecedor||compra?.fornecedor||'')}"></div></div><div class="muted" style="margin-top:10px">Corrija a quantidade e o valor exatamente como estão na nota. O preço por unidade é recalculado automaticamente. Se houver uma compra vinculada, ela e os relatórios serão atualizados sem criar um novo lançamento.</div><div style="margin-top:14px"><button type="button" class="primary" onclick="salvarEdicaoEstoque(${i})">Salvar alterações</button></div></div>`;
  document.body.appendChild(modal);
 }
 async function salvarEdicaoEstoque(i){
  const x=state.estoque?.[i];if(!x)return;
- const antigo={produto:x.produto||'',nota:x.nota||'',fornecedor:x.fornecedor||''};
- x.produto=document.getElementById('eeProduto')?.value.trim()||'';
- x.categoria=document.getElementById('eeCategoria')?.value||'';
- x.quantidade=numeroIA(document.getElementById('eeQtd')?.value)||0;
- x.unidade=document.getElementById('eeUnidade')?.value||'';
- x.valor=numeroIA(document.getElementById('eeValor')?.value)||0;
- x.nota=document.getElementById('eeNota')?.value.trim()||'';
- x.lote=document.getElementById('eeLote')?.value.trim()||'';
- x.fornecedor=document.getElementById('eeFornecedor')?.value.trim()||'';
- if(x.origem==='compras'){
-   let compra=null,item=null;
-   if(x.compraId)compra=(state.compras||[]).find(c=>c.id===x.compraId);
-   if(compra&&x.compraItemId)item=(compra.itens||[]).find(it=>it.id===x.compraItemId);
-   if(!item){
-     const candidatas=[];
-     for(const c of (state.compras||[]))for(const it of (c.itens||[]))if(chaveTexto(c.nota)===chaveTexto(antigo.nota)&&chaveTexto(it.produto)===chaveTexto(antigo.produto))candidatas.push([c,it]);
-     if(candidatas.length===1){compra=candidatas[0][0];item=candidatas[0][1];x.compraId=compra.id;x.compraItemId=item.id||(item.id=(compra.id||'cmp_antiga')+'_item_'+Date.now())}
-   }
-   if(compra&&item){item.produto=x.produto;item.categoria=x.categoria;item.unidade=x.unidade;compra.nota=x.nota;compra.fornecedor=x.fornecedor}
- }
- await salvarEstado();document.getElementById('editarEstoqueModal')?.remove();render();
+ const antigo={produto:x.produto||'',nota:x.nota||'',fornecedor:x.fornecedor||'',qtdAtual:Number(x.quantidade||0),valorAtual:Number(x.valor||0)};
+ const origem=localizarOrigemEstoque(x),compra=origem.compra,item=origem.item;
+ const qtdOriginalAntiga=Number(item?.quantidade??antigo.qtdAtual),qtdOriginalNova=Number(document.getElementById('eeQtdOriginal')?.value||0),valorOriginalNovo=Number(document.getElementById('eeValorOriginal')?.value||0);
+ let qtdAtualNova=Number(document.getElementById('eeQtdAtual')?.value||0);
+ if(document.getElementById('eeQtdAtual')?.value===String(antigo.qtdAtual) && item){const consumido=Math.max(0,qtdOriginalAntiga-antigo.qtdAtual);qtdAtualNova=Math.max(0,qtdOriginalNova-consumido)}
+ const unitNovo=qtdOriginalNova>0?valorOriginalNovo/qtdOriginalNova:0;
+ x.produto=document.getElementById('eeProduto')?.value.trim()||'';x.categoria=document.getElementById('eeCategoria')?.value||'';x.unidade=document.getElementById('eeUnidade')?.value||'';x.quantidade=qtdAtualNova;x.valor=qtdAtualNova*unitNovo;x.nota=document.getElementById('eeNota')?.value.trim()||'';x.lote=document.getElementById('eeLote')?.value.trim()||'';x.fornecedor=document.getElementById('eeFornecedor')?.value.trim()||'';
+ if(compra&&item){item.produto=x.produto;item.categoria=x.categoria;item.quantidade=qtdOriginalNova;item.unidade=x.unidade;item.valorUnit=unitNovo;item.valorTotal=valorOriginalNovo;compra.nota=x.nota;compra.fornecedor=x.fornecedor;compra.valorTotal=(compra.itens||[]).reduce((a,it)=>a+Number(it.valorTotal||0),0)}
+ await salvarEstado();document.getElementById('editarEstoqueModal')?.remove();render();alert('Lançamento corrigido. Estoque, compra vinculada e valores foram atualizados sem criar duplicata.');
 }
 
 async function editar(type,i){
