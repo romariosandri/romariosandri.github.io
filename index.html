@@ -428,6 +428,7 @@ async function carregarEstado(){
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function nav(active){document.getElementById("menu").innerHTML=modules.map(m=>`<button class="${m[0]===active?"active":""}" onclick="go('${m[0]}')">${m[1]} ${m[2]}</button>`).join("")}
 function go(page){
+  try{salvarRascunhoCompra();salvarRascunhoPagina();localStorage.setItem('ts_ultima_pagina',page)}catch(e){}
   location.hash=page;
   render();
 }
@@ -643,7 +644,7 @@ function dadosRascunhoCompra(){
 }
 function salvarRascunhoCompra(){
  if((location.hash.slice(1)||'inicio')!=='compras')return;const d=dadosRascunhoCompra();if(!d)return;
- try{localStorage.setItem(CHAVE_RASCUNHO_COMPRA,JSON.stringify(d))}catch(e){console.warn('Não foi possível salvar rascunho',e)}
+ try{localStorage.setItem(CHAVE_RASCUNHO_COMPRA,JSON.stringify(d));localStorage.setItem('ts_ultimo_rascunho','compras')}catch(e){console.warn('Não foi possível salvar rascunho',e)}
 }
 function apagarRascunhoCompra(){try{localStorage.removeItem(CHAVE_RASCUNHO_COMPRA)}catch(e){}}
 function restaurarRascunhoCompra(){
@@ -1050,7 +1051,7 @@ function salvarRascunhoPagina(){
  const extra={};
  if(page==='aplicacoes'){extra.talhoes=[...document.querySelectorAll('.atalhaoMulti:checked')].map(e=>e.value);extra.produtos=[...document.querySelectorAll('.produtoLinha')].map(l=>({bonificada:l.dataset.bonificada==='1',produto:l.querySelector('.aprProduto')?.value||'',nome:l.querySelector('.aprNomeBonificado')?.value||'',unidade:l.querySelector('.aprUnidadeBonificado')?.value||'',dose:l.querySelector('.aprDose')?.value||''}))}
  if(page==='tratamentoSementes'){extra.produtos=[...document.querySelectorAll('.tsLinha')].map(l=>({produto:l.querySelector('.tsProduto')?.value||'',dose:l.querySelector('.tsDose')?.value||''}))}
- try{localStorage.setItem('ts_draft_'+page,JSON.stringify({vals,extra,scrollY:window.scrollY,t:Date.now()}))}catch(e){}
+ try{localStorage.setItem('ts_draft_'+page,JSON.stringify({vals,extra,scrollY:window.scrollY,t:Date.now()}));localStorage.setItem('ts_ultimo_rascunho',page)}catch(e){}
 }
 function restaurarRascunhoPagina(page){
  let d;try{d=JSON.parse(localStorage.getItem('ts_draft_'+page)||'null')}catch(e){}if(!d)return;
@@ -1233,12 +1234,30 @@ async function carregarFazendas(){
   } catch(erro) { console.error("Erro ao carregar fazendas:", erro); }
 }
 
+function paginaComRascunhoRecente(){
+ try{
+   const p=localStorage.getItem('ts_ultimo_rascunho')||'';
+   if(!p)return '';
+   if(p==='compras'){const d=JSON.parse(localStorage.getItem(CHAVE_RASCUNHO_COMPRA)||'null');return d?'compras':''}
+   const d=JSON.parse(localStorage.getItem('ts_draft_'+p)||'null');
+   if(!d)return '';
+   if(d.t&&Date.now()-Number(d.t)>7*24*60*60*1000)return '';
+   return p;
+ }catch(e){return ''}
+}
+function prepararRetomadaRascunho(){
+ const atual=location.hash.slice(1);
+ if(atual)return;
+ const p=paginaComRascunhoRecente();
+ if(p)location.hash=p;
+}
 async function iniciar(){
  const a=authStorage();
  if(!a){telaLogin();return}
  salvarAuth(a);
  const exp=a.expires_at?Number(a.expires_at)*1000:0;
  if(exp && Date.now()>exp-60000){if(!await renovarSessao()){telaLogin();return}}
+ prepararRetomadaRascunho();
  await iniciarApp();
 }
 
@@ -1247,8 +1266,8 @@ document.addEventListener('change',e=>{if(e.target.closest&&e.target.closest('#c
 document.addEventListener('input',e=>{if(e.target.closest&&e.target.closest('#app')&&!e.target.closest('#compraReview'))salvarRascunhoPagina()});
 document.addEventListener('change',e=>{if(e.target.closest&&e.target.closest('#app')&&!e.target.closest('#compraReview'))salvarRascunhoPagina()});
 window.addEventListener('pagehide',salvarRascunhoCompra);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){salvarRascunhoCompra();salvarRascunhoPagina()}});
-window.addEventListener('pagehide',salvarRascunhoPagina);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){try{localStorage.setItem('ts_ultima_pagina',location.hash.slice(1)||'inicio')}catch(e){}salvarRascunhoCompra();salvarRascunhoPagina()}});
+window.addEventListener('pagehide',()=>{try{localStorage.setItem('ts_ultima_pagina',location.hash.slice(1)||'inicio')}catch(e){}salvarRascunhoPagina()});
 window.addEventListener("hashchange",render);
 let ultimaSincronizacao=0;
 async function atualizarAoVoltar(){
