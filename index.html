@@ -453,11 +453,26 @@ ${[["🌱","talhoes","Novo Talhão"],["💧","aplicacoes","Nova Aplicação"],["
 <div class="panel"><div class="row"><div><b>Segurança dos dados</b><div class="muted">Faça uma cópia dos dados do Terra Santa quando desejar.</div></div><div><button class="secondary" onclick="exportarBackup()">Exportar backup</button> <button class="secondary" onclick="document.getElementById('importBackup').click()">Importar backup</button><input id="importBackup" type="file" accept=".json,application/json" style="display:none" onchange="importarBackup(event)"></div></div></div>`;
 }
 function listPage(type,title,desc,button,formHtml,rows,headers){
-return `<div class="row"><div><h1 style="margin:0">${title}</h1><div class="muted">${desc}</div></div><button class="primary" onclick="toggleForm('${type}')">${button}</button></div>
+const acaoNovo=type==='tratamentoSementes'?"novoTratamentoSemente()":`toggleForm('${type}')`;
+return `<div class="row"><div><h1 style="margin:0">${title}</h1><div class="muted">${desc}</div></div><button class="primary" onclick="${acaoNovo}">${button}</button></div>
 <div id="${type}Form" class="panel" style="display:none">${formHtml}</div>
 <div class="panel"><div class="toolbar"><input placeholder="Pesquisar..." oninput="filtrarTabela(this)"></div><div style="overflow-x:auto"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum cadastro ainda.</td></tr>`}</tbody></table></div></div>`;
 }
 function toggleForm(id){let e=document.getElementById(id+"Form");if(e)e.style.display=e.style.display==="none"?"block":"none"}
+function novoTratamentoSemente(){
+ tratamentoEditandoPendente=null;
+ limparRascunhoPagina('tratamentoSementes');
+ try{localStorage.removeItem('ts_draft_tratamentoSementes')}catch(e){}
+ render();
+ setTimeout(()=>{
+   const f=document.getElementById('tratamentoSementesForm');
+   if(f)f.style.display='block';
+   const id=document.getElementById('tseditid');if(id)id.value='';
+   const b=document.getElementById('tsSalvarBtn');if(b)b.textContent='Salvar tratamento';
+   sugerirUnidadeTratamento();
+   previewTratamento();
+ },20);
+}
 function fazendas(){
 let rows=state.fazendas.map((f,i)=>`<tr><td>${esc(f.nome)}</td><td>${esc(f.area)} ha</td><td>${esc(f.local||"-")}</td><td>Ativa</td><td><button class="danger" onclick="del('fazendas',${i})">Excluir</button></td></tr>`).join("");
 return listPage("fazendas","Fazendas","Cadastre as propriedades da operação.","+ Nova Fazenda",`<form onsubmit="addFarm(event)"><div class="form"><div class="field"><label>Nome da fazenda *</label><input id="fnome" required placeholder="Ex.: Fazenda Terra Santa"></div><div class="field"><label>Área total (ha) *</label><input id="farea" type="number" step="0.01" required value="1050"></div><div class="field full"><label>Município / UF</label><input id="flocal" placeholder="Ex.: Sinop - MT"></div></div><br><button class="primary">Salvar fazenda</button></form>`,rows,["Fazenda","Área","Localização","Status",""])}
@@ -1057,7 +1072,7 @@ function relatoriosPage(){
 }
 function salvarRascunhoPagina(){
  const page=location.hash.slice(1)||'inicio';if(['inicio','compras','relatorios','mapas'].includes(page))return;const app=document.getElementById('app');if(!app)return;const vals={};
- app.querySelectorAll('input[id],select[id],textarea[id]').forEach(e=>{if(e.type==='file')return;vals[e.id]=e.type==='checkbox'?e.checked:e.value});
+ app.querySelectorAll('input[id],select[id],textarea[id]').forEach(e=>{if(e.type==='file'||e.id==='tseditid')return;vals[e.id]=e.type==='checkbox'?e.checked:e.value});
  const extra={};
  if(page==='aplicacoes'){extra.talhoes=[...document.querySelectorAll('.atalhaoMulti:checked')].map(e=>e.value);extra.produtos=[...document.querySelectorAll('.produtoLinha')].map(l=>({bonificada:l.dataset.bonificada==='1',produto:l.querySelector('.aprProduto')?.value||'',nome:l.querySelector('.aprNomeBonificado')?.value||'',unidade:l.querySelector('.aprUnidadeBonificado')?.value||'',dose:l.querySelector('.aprDose')?.value||''}))}
  if(page==='tratamentoSementes'){extra.produtos=[...document.querySelectorAll('.tsLinha')].map(l=>({produto:l.querySelector('.tsProduto')?.value||'',dose:l.querySelector('.tsDose')?.value||''}))}
