@@ -416,6 +416,7 @@ async function sincronizarPendentes(){
  try{await enviarEstadoLocal();atualizarStatusSync()}catch(e){console.warn("Sincronização pendente",e);atualizarStatusSync()}
 }
 async function carregarEstado(){
+  if(temSyncPendente() && navigator.onLine){try{await enviarEstadoLocal()}catch(e){console.warn("Não foi possível enviar alterações pendentes",e);return}}
   const remoto=await supabaseRequest("app_state?id=eq.1&select=dados");
   if(Array.isArray(remoto)&&remoto[0]){
     const d=remoto[0].dados||{};
@@ -911,6 +912,13 @@ function recalcularCustosVinculadosAoEstoque(produtoAntigo=''){
 async function salvarEdicaoEstoque(i){
  const x=state.estoque?.[i];if(!x)return;
  const antigo={produto:x.produto||'',nota:x.nota||'',fornecedor:x.fornecedor||'',qtdAtual:Number(x.quantidade||0),valorAtual:Number(x.valor||0)};
+ // A chave de sincronização de registros antigos depende da unidade. Ao corrigir L para Bag,
+ // marcar a chave antiga como substituída evita que o servidor recrie a entrada antiga.
+ const chaveAntiga=chaveRegistroTipo('estoque',x,i);
+ if(!x.id)x.id='est_corrigido_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+ state._excluidos=state._excluidos||{};
+ state._excluidos.estoque=Array.isArray(state._excluidos.estoque)?state._excluidos.estoque:[];
+ if(!chaveAntiga.startsWith('id:')&&!state._excluidos.estoque.includes(chaveAntiga))state._excluidos.estoque.push(chaveAntiga);
  const origem=localizarOrigemEstoque(x),compra=origem.compra,item=origem.item;
  const qtdOriginalAntiga=Number(item?.quantidade??antigo.qtdAtual),qtdOriginalNova=Number(document.getElementById('eeQtdOriginal')?.value||0),valorOriginalNovo=Number(document.getElementById('eeValorOriginal')?.value||0);
  let qtdAtualNova=Number(document.getElementById('eeQtdAtual')?.value||0);
@@ -919,7 +927,9 @@ async function salvarEdicaoEstoque(i){
  x.produto=document.getElementById('eeProduto')?.value.trim()||'';x.categoria=document.getElementById('eeCategoria')?.value||'';x.unidade=document.getElementById('eeUnidade')?.value||'';x.quantidade=qtdAtualNova;x.valor=qtdAtualNova*unitNovo;x.nota=document.getElementById('eeNota')?.value.trim()||'';x.lote=document.getElementById('eeLote')?.value.trim()||'';x.fornecedor=document.getElementById('eeFornecedor')?.value.trim()||'';
  if(compra&&item){item.produto=x.produto;item.categoria=x.categoria;item.quantidade=qtdOriginalNova;item.unidade=x.unidade;item.valorUnit=unitNovo;item.valorTotal=valorOriginalNovo;compra.nota=x.nota;compra.fornecedor=x.fornecedor;compra.valorTotal=(compra.itens||[]).reduce((a,it)=>a+Number(it.valorTotal||0),0)}
  recalcularCustosVinculadosAoEstoque(antigo.produto);
- await salvarEstado();document.getElementById('editarEstoqueModal')?.remove();render();alert('Lançamento corrigido. Estoque, compra vinculada e valores foram atualizados sem criar duplicata.');
+ saveLocal();
+ const sincronizado=await salvarEstado();document.getElementById('editarEstoqueModal')?.remove();render();
+ alert(sincronizado?'Alteração salva e sincronizada. Confira a unidade no estoque.':'Alteração salva neste aparelho. Sincronização pendente; mantenha este aparelho conectado antes de abrir em outro.');
 }
 
 async function editar(type,i){
