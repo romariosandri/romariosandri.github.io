@@ -382,6 +382,28 @@ function corrigirDuplicadosMaquinas(){
  }
  state.maquinas=saida;return removidos;
 }
+function corrigirUnidadeHeraBackup(){
+ const compra=(state.compras||[]).find(c=>String(c.nota||'').replace(/\\D/g,'')==='66939'&&(c.itens||[]).some(it=>chaveTexto(it.produto)==='hera 5mm'&&String(it.unidade||'').toLowerCase()==='bag'));
+ if(!compra)return false;
+ const item=compra.itens.find(it=>chaveTexto(it.produto)==='hera 5mm'&&String(it.unidade||'').toLowerCase()==='bag');
+ const encontrados=(state.estoque||[]).filter(e=>chaveTexto(e.produto)==='hera 5mm'&&String(e.nota||'').replace(/\\D/g,'')==='66939');
+ if(!encontrados.length)return false;
+ const jaOk=encontrados.length===1&&encontrados[0].unidade==='Bag'&&encontrados[0].compraItemId===item.id;
+ if(jaOk)return false;
+ const preferido=encontrados.find(x=>x.compraItemId===item.id&&x.unidade==='Bag')||encontrados.find(x=>x.unidade==='Bag')||encontrados[0];
+ state._excluidos=state._excluidos||{};state._excluidos.estoque=state._excluidos.estoque||[];
+ for(const x of encontrados){
+  if(x===preferido)continue;
+  const k=chaveRegistroTipo('estoque',x,0);
+  if(!state._excluidos.estoque.includes(k))state._excluidos.estoque.push(k);
+ }
+ // Preserve the original stock quantity/value from one record; never add duplicates.
+ const antigo=chaveRegistroTipo('estoque',preferido,0);
+ if(!preferido.id){if(!state._excluidos.estoque.includes(antigo))state._excluidos.estoque.push(antigo);preferido.id='est_hera_66939_corrigida'}
+ preferido.unidade='Bag';preferido.compraId=compra.id;preferido.compraItemId=item.id;
+ state.estoque=state.estoque.filter(x=>!encontrados.includes(x)||x===preferido);
+ return true;
+}
 function corrigirDuplicadosEstoque(){
  state.estoque=state.estoque||[];state.compras=state.compras||[];
  const m=new Map(),saida=[];let removidos=0;
@@ -432,8 +454,8 @@ async function carregarEstado(){
     state.safras=Array.isArray(state.safras)?state.safras:[];
     state.aplicacoes=Array.isArray(state.aplicacoes)?state.aplicacoes:[];
     for(const k of ["plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) state[k]=Array.isArray(state[k])?state[k]:[];
-    const corrigidos=corrigirDuplicadosEstoque(),maqCorrigidas=corrigirDuplicadosMaquinas();
-    if(corrigidos||maqCorrigidas){console.warn('Terra Santa: limpeza automática — estoque '+corrigidos+', máquinas '+maqCorrigidas+'.');saveLocal();try{await enviarEstadoLocal()}catch(e){console.warn('Limpeza salva localmente; sincronização pendente',e)}}
+    const unidadeHeraCorrigida=corrigirUnidadeHeraBackup(),corrigidos=corrigirDuplicadosEstoque(),maqCorrigidas=corrigirDuplicadosMaquinas();
+    if(unidadeHeraCorrigida||corrigidos||maqCorrigidas){console.warn('Terra Santa: limpeza automática — estoque '+corrigidos+', máquinas '+maqCorrigidas+'.');saveLocal();try{await enviarEstadoLocal()}catch(e){console.warn('Limpeza salva localmente; sincronização pendente',e)}}
     saveLocal();
   }
 }
