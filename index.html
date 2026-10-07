@@ -353,7 +353,7 @@ function chaveRegistro(x,i){
 }
 function marcarExcluido(tipo,item){
  state._excluidos=state._excluidos&&typeof state._excluidos==="object"?state._excluidos:{};
- const k=chaveRegistro(item,0);
+ const k=chaveRegistroTipo(tipo,item,0);
  const arr=Array.isArray(state._excluidos[tipo])?state._excluidos[tipo]:[];
  if(!arr.includes(k))arr.push(k);
  state._excluidos[tipo]=arr.slice(-2000);
@@ -363,6 +363,7 @@ function chaveRegistroTipo(tipo,x,i){
  // Cadastros antigos de talhão não tinham ID. O nome + fazenda identifica o talhão
  // sem fazer vários talhões diferentes virarem um único registro na sincronização.
  if(tipo==='talhoes')return 'talhao:'+chaveTexto(x?.nome)+'|'+chaveTexto(x?.fazenda);
+ if(tipo==='maquinas')return 'maquina:'+chaveTexto(x?.nome)+'|'+chaveTexto(x?.tipo)+'|'+chaveTexto(x?.modelo);
  return chaveRegistro(x,i);
 }
 function unirListasTipo(tipo,a=[],b=[],excluidos={}){
@@ -371,6 +372,16 @@ function unirListasTipo(tipo,a=[],b=[],excluidos={}){
  return [...m.values()];
 }
 function unirListas(a=[],b=[]){const m=new Map();[...b,...a].forEach((x,i)=>{const k=chaveRegistro(x,i);if(!m.has(k))m.set(k,x);else{const ant=m.get(k);m.set(k,{...ant,...x,id:x?.id||ant?.id})}});return [...m.values()]}
+function corrigirDuplicadosMaquinas(){
+ state.maquinas=Array.isArray(state.maquinas)?state.maquinas:[];
+ const vistos=new Set(),saida=[];let removidos=0;
+ for(const x of state.maquinas){
+   const k=x?.id?'id:'+String(x.id):'legacy:'+chaveTexto(x?.nome)+'|'+chaveTexto(x?.tipo)+'|'+chaveTexto(x?.modelo)+'|'+String(x?.horas??'');
+   if(vistos.has(k)){removidos++;continue}
+   vistos.add(k);saida.push(x);
+ }
+ state.maquinas=saida;return removidos;
+}
 function corrigirDuplicadosEstoque(){
  state.estoque=state.estoque||[];state.compras=state.compras||[];
  const m=new Map(),saida=[];let removidos=0;
@@ -420,8 +431,8 @@ async function carregarEstado(){
     state.safras=Array.isArray(state.safras)?state.safras:[];
     state.aplicacoes=Array.isArray(state.aplicacoes)?state.aplicacoes:[];
     for(const k of ["plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) state[k]=Array.isArray(state[k])?state[k]:[];
-    const corrigidos=corrigirDuplicadosEstoque();
-    if(corrigidos){console.warn('Terra Santa: '+corrigidos+' duplicata(s) de estoque removida(s).');try{await enviarEstadoLocal()}catch(e){console.warn('Limpeza salva localmente; sincronização pendente',e)}}
+    const corrigidos=corrigirDuplicadosEstoque(),maqCorrigidas=corrigirDuplicadosMaquinas();
+    if(corrigidos||maqCorrigidas){console.warn('Terra Santa: limpeza automática — estoque '+corrigidos+', máquinas '+maqCorrigidas+'.');saveLocal();try{await enviarEstadoLocal()}catch(e){console.warn('Limpeza salva localmente; sincronização pendente',e)}}
     saveLocal();
   }
 }
@@ -539,7 +550,7 @@ function areaJaPlantadaTalhao(nome,safra,ignorarId=''){return (state.plantio||[]
 function atualizarAreaPlantio(){const t=state.talhoes.find(x=>x.nome===document.getElementById('ptalhao')?.value),safra=document.getElementById('psafra')?.value||safraAtivaNome(),info=document.getElementById('pareaInfo'),inp=document.getElementById('parea');if(!t||!info)return;const total=Number(t.area||0),ja=areaJaPlantadaTalhao(t.nome,safra),rest=Math.max(0,total-ja);info.innerHTML=`Área do talhão: <b>${total.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b> • Já plantado: <b>${ja.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b> • Restante: <b>${rest.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b>`;if(inp&&!inp.value&&rest>0)inp.value=rest}
 function atualizarUnidadePlantio(){const tr=(state.tratamentosSementes||[]).find(x=>x.id===document.getElementById('ptrat')?.value),un=tr?unidadeTratamentoLabel(tr):'',lab=document.getElementById('psementeLabel'),info=document.getElementById('psementeUnidade');if(lab)lab.textContent=tr?`Quantidade total utilizada (${un})`:'Quantidade total de semente utilizada';if(info)info.textContent=tr?`Saldo disponível: ${Number(tr.saldo||0).toLocaleString('pt-BR')} ${un}`:''}
 function previewCustoPlantio(){const tr=(state.tratamentosSementes||[]).find(x=>x.id===document.getElementById('ptrat')?.value),qTotal=Number(document.getElementById('psementekg')?.value||0),area=Number(document.getElementById('parea')?.value||0),box=document.getElementById('pcustoPreview');atualizarAreaPlantio();atualizarUnidadePlantio();if(!box)return;if(!tr||!qTotal){box.textContent=area?`Plantio deste lançamento: ${area.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha. Selecione um tratamento e informe a quantidade total utilizada.`:'Informe a área plantada neste lançamento.';return}const un=unidadeTratamentoLabel(tr),pesoBag=Number(tr.pesoBagKg||0),kgTotal=un==='Bag'?(pesoBag>0?qTotal*pesoBag:0):qTotal,kgHa=area>0&&kgTotal>0?kgTotal/area:0,cUnit=custoUnitTratamento(tr),custoTotal=qTotal*cUnit,custoHa=area>0?custoTotal/area:0;let conversao=un==='Bag'?(pesoBag>0?` • ${kgTotal.toLocaleString('pt-BR',{maximumFractionDigits:2})} kg no total • <b>${kgHa.toLocaleString('pt-BR',{maximumFractionDigits:2})} kg/ha</b>`:` • <b>Falta o peso por Bag no tratamento para calcular kg/ha.</b>`):` • <b>${kgHa.toLocaleString('pt-BR',{maximumFractionDigits:2})} kg/ha</b>`;box.innerHTML=`<b>${qTotal.toLocaleString('pt-BR',{maximumFractionDigits:2})} ${un}</b> utilizados${conversao}<br><b>Custo da semente tratada:</b> ${moeda(cUnit)}/${un} • <b>${moeda(custoHa)}/ha</b> • Custo total: <b>${moeda(custoTotal)}</b>`}
-function maquinas(){state.maquinas=state.maquinas||[];let idsMudaram=false;state.maquinas.forEach((x,i)=>{if(!x.id){x.id='maq_legacy_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,6);idsMudaram=true}});if(idsMudaram)saveLocal();let rows=state.maquinas.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.tipo||"-")}</td><td>${esc(x.modelo||"-")}</td><td>${esc(x.horas||"-")}</td><td><button class="secondary" onclick="editar('maquinas',${i})">Editar</button> <button class="danger" onclick="del('maquinas',${i})">Excluir</button></td></tr>`).join("");return listPage("maquinas","Máquinas","Cadastre tratores, colheitadeiras e implementos.","+ Nova Máquina",`<form onsubmit="addMaquina(event)"><div class="form"><div class="field"><label>Nome *</label><input id="mnome" required placeholder="Ex.: S550"></div><div class="field"><label>Tipo</label><input id="mtipo" placeholder="Colheitadeira"></div><div class="field"><label>Modelo</label><input id="mmodelo"></div><div class="field"><label>Horas atuais</label><input id="mhoras" type="number" step="0.1"></div></div><br><button class="primary">Salvar máquina</button></form>`,rows,["Máquina","Tipo","Modelo","Horas",""])}
+function maquinas(){state.maquinas=state.maquinas||[];let rows=state.maquinas.map((x,i)=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.tipo||"-")}</td><td>${esc(x.modelo||"-")}</td><td>${esc(x.horas||"-")}</td><td><button class="secondary" onclick="editar('maquinas',${i})">Editar</button> <button class="danger" onclick="del('maquinas',${i})">Excluir</button></td></tr>`).join("");return listPage("maquinas","Máquinas","Cadastre tratores, colheitadeiras e implementos.","+ Nova Máquina",`<form onsubmit="addMaquina(event)"><div class="form"><div class="field"><label>Nome *</label><input id="mnome" required placeholder="Ex.: S550"></div><div class="field"><label>Tipo</label><input id="mtipo" placeholder="Colheitadeira"></div><div class="field"><label>Modelo</label><input id="mmodelo"></div><div class="field"><label>Horas atuais</label><input id="mhoras" type="number" step="0.1"></div></div><br><button class="primary">Salvar máquina</button></form>`,rows,["Máquina","Tipo","Modelo","Horas",""])}
 
 function caminhoes(){
  state.caminhoes=state.caminhoes||[]; state.dieselCaminhoes=state.dieselCaminhoes||[];
