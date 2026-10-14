@@ -1218,13 +1218,14 @@ function salvarRascunhoPagina(){
  const page=location.hash.slice(1)||'inicio';if(['inicio','compras','relatorios','mapas'].includes(page))return;const app=document.getElementById('app');if(!app)return;const vals={};
  app.querySelectorAll('input[id],select[id],textarea[id]').forEach(e=>{if(e.type==='file'||e.id==='tseditid')return;vals[e.id]=e.type==='checkbox'?e.checked:e.value});
  const extra={};
+ if(page==='aplicacoes'){const painel=document.getElementById('aplicacoesForm');if(!painel||painel.style.display==='none')return;extra.formAberto=true;}
  if(page==='aplicacoes'){extra.talhoes=[...document.querySelectorAll('.atalhaoMulti:checked')].map(e=>e.value);extra.produtos=[...document.querySelectorAll('.produtoLinha')].map(l=>({bonificada:l.dataset.bonificada==='1',produto:l.querySelector('.aprProduto')?.value||'',nome:l.querySelector('.aprNomeBonificado')?.value||'',unidade:l.querySelector('.aprUnidadeBonificado')?.value||'',dose:l.querySelector('.aprDose')?.value||'',unidadeDose:l.querySelector('.aprUnidadeDose')?.value||''}))}
  if(page==='tratamentoSementes'){extra.produtos=[...document.querySelectorAll('.tsLinha')].map(l=>({produto:l.querySelector('.tsProduto')?.value||'',dose:l.querySelector('.tsDose')?.value||''}))}
  try{localStorage.setItem('ts_draft_'+page,JSON.stringify({vals,extra,scrollY:window.scrollY,t:Date.now()}));localStorage.setItem('ts_ultimo_rascunho',page)}catch(e){}
 }
 function restaurarRascunhoPagina(page){
  let d;try{d=JSON.parse(localStorage.getItem('ts_draft_'+page)||'null')}catch(e){}if(!d)return;
- if(page==='aplicacoes'&&d.extra){for(const nome of (d.extra.talhoes||[])){const el=[...document.querySelectorAll('.atalhaoMulti')].find(x=>x.value===nome);if(el)el.checked=true}for(const p of (d.extra.produtos||[])){if(p.bonificada)addLinhaProdutoBonificado();else addLinhaProduto();const l=[...document.querySelectorAll('.produtoLinha')].pop();if(l){const pr=l.querySelector('.aprProduto'),nm=l.querySelector('.aprNomeBonificado'),un=l.querySelector('.aprUnidadeBonificado'),ds=l.querySelector('.aprDose');if(pr){pr.value=p.produto;if(pr.value!=='')atualizarUnidadeDoseLinha(pr)}if(nm)nm.value=p.nome||'';if(un&&p.unidade)un.value=p.unidade;if(ds)ds.value=p.dose;const ud=l.querySelector('.aprUnidadeDose');if(ud&&p.unidadeDose)ud.value=p.unidadeDose}}previewAplicacao()}
+ if(page==='aplicacoes'&&d.extra){const painel=document.getElementById('aplicacoesForm');if(painel&&d.extra.formAberto)painel.style.display='block';for(const nome of (d.extra.talhoes||[])){const el=[...document.querySelectorAll('.atalhaoMulti')].find(x=>x.value===nome);if(el)el.checked=true}for(const p of (d.extra.produtos||[])){if(p.bonificada)addLinhaProdutoBonificado();else addLinhaProduto();const l=[...document.querySelectorAll('.produtoLinha')].pop();if(l){const pr=l.querySelector('.aprProduto'),nm=l.querySelector('.aprNomeBonificado'),un=l.querySelector('.aprUnidadeBonificado'),ds=l.querySelector('.aprDose');if(pr){pr.value=p.produto;if(pr.value!=='')atualizarUnidadeDoseLinha(pr)}if(nm)nm.value=p.nome||'';if(un&&p.unidade)un.value=p.unidade;if(ds)ds.value=p.dose;const ud=l.querySelector('.aprUnidadeDose');if(ud&&p.unidadeDose)ud.value=p.unidadeDose}}previewAplicacao()}
  if(page==='tratamentoSementes'&&d.extra){for(const p of (d.extra.produtos||[])){addLinhaTratamento();const l=[...document.querySelectorAll('.tsLinha')].pop();if(l){const pr=l.querySelector('.tsProduto'),ds=l.querySelector('.tsDose');if(pr)pr.value=p.produto;if(ds)ds.value=p.dose}}}
  for(const [id,v] of Object.entries(d.vals||{})){const el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v}}
  setTimeout(()=>{if(page==='aplicacoes')previewAplicacao();if(page==='tratamentoSementes')previewTratamento();if(page==='plantio')previewCustoPlantio();if(page==='diesel'){trocaTipoDiesel();calcDiesel()}window.scrollTo(0,d.scrollY||0)},40)
@@ -1316,26 +1317,32 @@ async function del(type,i){
       render();
       return;
     }
+    if(type==="tratamentosSementes"){
+      const tr=state.tratamentosSementes?.[i];
+      if(!tr)throw new Error('Tratamento não encontrado.');
+      const usados=(state.plantio||[]).filter(p=>String(p.tratamentoId||'')===String(tr.id||''));
+      if(usados.length||Number(tr.saldo??tr.quantidade??0)<Number(tr.quantidade||0)-0.00001)
+        throw new Error('Este tratamento já foi usado no plantio. Não é seguro devolver toda a semente ao estoque. Revise os plantios vinculados antes de excluir.');
+      const itens=[{produto:tr.semente,lote:tr.lote,unidade:tr.unidadeEstoqueSemente,quantidade:Number(tr.baixaSemente||tr.quantidade||0),custo:Number(tr.custoSemente||0)},...(tr.produtos||[]).map(x=>({produto:x.produto,unidade:x.unidade,quantidade:Number(x.quantidade||0),custo:Number(x.custo||0)}))];
+      for(const x of itens){if(x.quantidade>0&&!localizarEstoqueTratamento(tr,x.produto,x.lote||'',x.unidade||''))throw new Error('Produto não encontrado no estoque: '+x.produto+'. Nenhuma exclusão foi realizada.')}
+      devolverTratamentoAoEstoque(tr);
+    }
     if(type==="aplicacoes"){
-      const a=state.aplicacoes[i];
-      if(a&&a.id){
-        if(Array.isArray(a.produtos)){
-          for(const p of a.produtos){
-            const item=(state.estoque||[]).find(x=>x.produto===p.produto);
-            if(item){
-              item.quantidade=Number(item.quantidade||0)+Number(p.quantidade||0);
-              item.valor=Number(item.valor||0)+Number(p.custo||0);
-            }
-          }
-        } else if(a.quantidade!=null){
-          const item=(state.estoque||[]).find(x=>x.produto===a.produto);
-          if(item){
-            item.quantidade=Number(item.quantidade||0)+Number(a.quantidade||0);
-            item.valor=Number(item.valor||0)+Number(a.custo||0);
-          }
-        }
-        state.custos=(state.custos||[]).filter(c=>c.aplicacaoId!==a.id);
+      const a=state.aplicacoes?.[i];
+      if(!a)throw new Error('Aplicação não encontrada.');
+      const itens=Array.isArray(a.produtos)?a.produtos:(a.produto?[{produto:a.produto,quantidade:a.quantidade,custo:a.custo,unidade:a.unidade}]:[]);
+      const devolver=[];
+      for(const p of itens){
+        if(p.bonificada||p.foraEstoque)continue;
+        const q=Number(p.quantidade||0);
+        if(!Number.isFinite(q)||q<0)throw new Error('Quantidade inválida na aplicação: '+p.produto);
+        if(q===0)continue;
+        const item=(state.estoque||[]).find(x=>chaveTexto(x.produto)===chaveTexto(p.produto)&&String(x.unidade||'').toLowerCase()===String(p.unidade||x.unidade).toLowerCase());
+        if(!item)throw new Error('Não encontrei '+p.produto+' na unidade original do estoque. A aplicação não foi excluída.');
+        devolver.push({item,q,custo:Number(p.custo||0)});
       }
+      for(const x of devolver){x.item.quantidade=Number(x.item.quantidade||0)+x.q;x.item.valor=Number(x.item.valor||0)+x.custo;}
+      state.custos=(state.custos||[]).filter(c=>c.aplicacaoId!==a.id&&c.id!=='custo_'+a.id);
     }
     const removido=state[type]?.[i];if(removido)marcarExcluido(type,removido);
     state[type].splice(i,1);
@@ -1444,17 +1451,17 @@ async function atualizarAoVoltar(){
   const agora=Date.now();
   if(agora-ultimaSincronizacao<1500)return;
   ultimaSincronizacao=agora;
-  if(!navigator.onLine){atualizarStatusSync();render();return;}
+  if(!navigator.onLine){atualizarStatusSync();return;}
   try{
     if(temSyncPendente())await sincronizarPendentes();
     await Promise.all([carregarFazendas(),carregarEstado()]);
-    render();atualizarStatusSync();
+    atualizarStatusSync();
   }catch(erro){console.error("Erro ao atualizar dados:",erro);atualizarStatusSync();}
 }
 window.addEventListener("pageshow",atualizarAoVoltar);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")atualizarAoVoltar();});
 window.addEventListener("offline",atualizarStatusSync);
-window.addEventListener("online",async()=>{atualizarStatusSync();await sincronizarPendentes();try{await Promise.all([carregarFazendas(),carregarEstado()]);render()}catch(e){console.warn(e)}atualizarStatusSync();});
+window.addEventListener("online",async()=>{atualizarStatusSync();await sincronizarPendentes();try{await Promise.all([carregarFazendas(),carregarEstado()])}catch(e){console.warn(e)}atualizarStatusSync();});
 iniciar();
 
 
