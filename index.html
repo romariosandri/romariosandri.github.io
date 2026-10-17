@@ -1695,12 +1695,41 @@ function executarAuditoriaTerraSanta(){
  tsUltimaAuditoria=avisos;
  const crit=avisos.filter(x=>x.nivel==='Crítico').length, conf=avisos.length-crit;
  const area=document.getElementById('tsAuditoriaResultado');if(!area)return;
- const linhas=avisos.map(a=>`<tr><td>${a.nivel==='Crítico'?'🔴':'🟡'} ${esc(a.nivel)}</td><td>${esc(a.modulo)}</td><td>${esc(a.descricao)}</td><td>${esc(a.referencia)}</td></tr>`).join('');
- area.innerHTML=`<p><b>${crit} alerta(s) crítico(s)</b> • ${conf} item(ns) para conferir • ${compras.length} compra(s), ${estoque.length} entrada(s) de estoque, ${custos.length} custo(s), ${tratamentos.length} tratamento(s) analisados.</p><div style="overflow-x:auto"><table><thead><tr><th>Nível</th><th>Módulo</th><th>Possível problema</th><th>Referência</th></tr></thead><tbody>${linhas||'<tr><td colspan="4">Nenhuma divergência encontrada nas verificações disponíveis.</td></tr>'}</tbody></table></div><p class="muted">Avisos são indícios para conferência, não correções automáticas. Não é possível reconstituir com certeza exclusões anteriores sem registros de origem. Saldo físico deve ser conferido separadamente.</p>`;
+ const linhas=avisos.map((a,i)=>{const guia=orientacaoAuditoriaTerraSanta(a);return `<tr><td>${a.nivel==='Crítico'?'🔴':'🟡'} ${esc(a.nivel)}</td><td>${esc(a.modulo)}</td><td>${esc(a.descricao)}</td><td>${esc(a.referencia)}</td><td style="min-width:240px"><b>${esc(guia.titulo)}</b><div style="margin-top:5px;white-space:normal">${esc(guia.texto)}</div><button type="button" class="secondary" style="margin-top:8px" onclick="abrirRegistroAuditoriaTerraSanta(${i})">📂 Abrir ${esc(guia.destino)}</button></td></tr>`}).join('');
+ area.innerHTML=`<p><b>${crit} alerta(s) crítico(s)</b> • ${conf} item(ns) para conferir • ${compras.length} compra(s), ${estoque.length} entrada(s) de estoque, ${custos.length} custo(s), ${tratamentos.length} tratamento(s) analisados.</p><div style="overflow-x:auto"><table><thead><tr><th>Nível</th><th>Módulo</th><th>Possível problema</th><th>Referência</th><th>Solução sugerida</th></tr></thead><tbody>${linhas||'<tr><td colspan="5">Nenhuma divergência encontrada nas verificações disponíveis.</td></tr>'}</tbody></table></div><p class="muted">Avisos são indícios para conferência, não correções automáticas. Não é possível reconstituir com certeza exclusões anteriores sem registros de origem. Saldo físico deve ser conferido separadamente.</p>`;
 }
+
+// Orientações de conferência; não executam alterações em estoque, custos ou compras.
+function orientacaoAuditoriaTerraSanta(a){
+ const d=String(a.descricao||'').toLowerCase(), m=String(a.modulo||'').toLowerCase();
+ const destino=m.includes('compra')?'Compras':m.includes('tratamento')?'Tratamentos':m.includes('plantio')?'Plantio':m.includes('aplica')?'Aplicações':m.includes('custo')?'Custos':'Estoque';
+ let titulo='Conferir lançamento', texto='Abra o módulo indicado, localize a referência e compare o lançamento com os documentos originais. Não crie outro registro sem verificar o existente.';
+ if(d.includes('esperada uma entrada de estoque')){titulo='Conferir entrada da compra';texto='Localize a nota e verifique se a entrada foi excluída, consumida ou perdeu o vínculo. Confira o histórico de movimentações e o saldo físico antes de cadastrar ou ajustar estoque. Não lance a compra novamente.';}
+ else if(d.includes('entrada vinculada a compra que não existe')){titulo='Revisar origem do estoque';texto='Confira a nota fiscal original e procure a compra pelo número, fornecedor e produto. Se ela existir com outro identificador, o vínculo precisa ser corrigido; não exclua o estoque nem recrie a nota sem conferir.';}
+ else if(d.includes('entrada vinculada a item de compra que não existe')){titulo='Revisar item da nota';texto='Abra a compra correspondente e confira se o produto foi removido ou editado. Compare quantidade, unidade e valor com a nota original antes de corrigir a ligação do item.';}
+ else if(d.includes('custo vinculado a plantio ausente')){titulo='Conferir plantio e custo';texto='Procure o plantio original pelo talhão, data e semente. Confira se foi excluído ou substituído. Não lance a despesa novamente: o custo pode estar correto e somente o vínculo estar ausente.';}
+ else if(d.includes('custo vinculado a aplicação ausente')){titulo='Conferir aplicação e custo';texto='Localize a aplicação original por data, talhão e produtos. Confirme se o custo já foi contabilizado antes de fazer qualquer correção.';}
+ else if(d.includes('possível nota fiscal duplicada')){titulo='Comparar notas repetidas';texto='Abra as compras e compare número, série, fornecedor, itens e valores. Só exclua uma nota após verificar seus vínculos com estoque e custos.';}
+ else if(d.includes('total da nota')){titulo='Recalcular valores';texto='Compare o valor total da nota com a soma de cada item, inclusive descontos e frete. Corrija na compra original, sem gerar uma segunda nota.';}
+ else if(d.includes('saldo inválido')||d.includes('quantidade inválida')||d.includes('quantidade negativa')){titulo='Conferir quantidades';texto='Confira unidades, baixas, devoluções e lançamentos parciais no histórico. Compare com o saldo físico antes de corrigir.';}
+ else if(d.includes('custo vinculado a compra ausente')||d.includes('custo vinculado a item de compra ausente')){titulo='Revisar vínculo do custo';texto='Localize a nota e o item original e confira se a despesa já consta nos custos. Evite cadastrar o mesmo custo novamente.';}
+ else if(d.includes('entradas do mesmo produto')){titulo='Verificar lotes e compras';texto='Pode haver entradas legítimas de notas diferentes. Compare lotes, fornecedores, notas e datas antes de considerar uma duplicidade.';}
+ else if(d.includes('nome do produto diferente')||d.includes('unidade diferente')){titulo='Comparar cadastro e nota';texto='Confira a descrição, unidade de medida e conversões na nota original e na entrada de estoque. Evite alterar o cadastro de um produto já utilizado sem revisar os vínculos.';}
+ else if(d.includes('saldo em estoque maior')){titulo='Conferir devoluções';texto='Confira entradas, saídas, devoluções e ajustes posteriores à compra. O saldo pode ter sido alterado legitimamente.';}
+ else if(d.includes('plantio vinculado a tratamento excluído')){titulo='Revisar tratamento do plantio';texto='Procure o tratamento de sementes utilizado, compare data, lote e quantidade e verifique se foi excluído. Não desconte sementes novamente.';}
+ return {titulo,texto,destino};
+}
+function abrirRegistroAuditoriaTerraSanta(i){
+ const a=tsUltimaAuditoria[i];if(!a)return;
+ const m=String(a.modulo||'').toLowerCase();
+ const page=m.includes('compra')?'compras':m.includes('tratamento')?'tratamentoSementes':m.includes('plantio')?'plantio':m.includes('aplica')?'aplicacoes':m.includes('custo')?'custos':'estoque';
+ go(page);
+ alert('Procure este registro no módulo aberto:\n\n'+a.referencia+'\n\n'+orientacaoAuditoriaTerraSanta(a).texto+'\n\nA auditoria não altera dados automaticamente.');
+}
+
 function exportarAuditoriaTerraSanta(){
  if(!document.querySelector('#tsAuditoriaResultado table')){alert('Execute Conferir tudo antes de exportar.');return;}
- const linhas=[['Nível','Módulo','Possível problema','Referência'],...tsUltimaAuditoria.map(a=>[a.nivel,a.modulo,a.descricao,a.referencia])];
+ const linhas=[['Nível','Módulo','Possível problema','Referência','Solução sugerida'],...tsUltimaAuditoria.map(a=>[a.nivel,a.modulo,a.descricao,a.referencia,orientacaoAuditoriaTerraSanta(a).texto])];
  const csv='\uFEFF'+linhas.map(l=>l.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='auditoria_terra_santa.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
