@@ -1551,7 +1551,7 @@ else if(page==="romaneios")el.innerHTML=romaneios();
 else if(page==="vendas")el.innerHTML=vendas();
 else if(page==="pluviometria")el.innerHTML=pluviometria();
 else if(page==="mapas")el.innerHTML=mapasPage();
-else if(page==="relatorios")el.innerHTML=relatoriosPage();
+else if(page==="relatorios")el.innerHTML=painelAuditoriaTerraSanta()+relatoriosPage();
 else {let m=modules.find(x=>x[0]===page)||modules[0];el.innerHTML=generic(m[2],m[1],"Estrutura do módulo Terra Santa.");}
 setTimeout(()=>restaurarRascunhoPagina(page),0);
 }
@@ -1638,5 +1638,71 @@ setInterval(aplicarSaudacao,60000);
 window.addEventListener("hashchange",()=>setTimeout(aplicarSaudacao,0));
 window.addEventListener("load",()=>setTimeout(aplicarSaudacao,50));
 document.addEventListener("click",()=>setTimeout(aplicarSaudacao,0));
+
+// Auditoria de consistência: somente leitura. Nenhum lançamento é alterado.
+function painelAuditoriaTerraSanta(){
+ return `<div class="panel" id="tsAuditoriaPanel"><h2>🛡️ Auditoria do Sistema</h2><p class="muted">Confere vínculos entre compras, estoque, custos, tratamentos e plantios. Não altera dados.</p><button class="primary" type="button" onclick="executarAuditoriaTerraSanta()">🔎 Conferir tudo</button> <button class="secondary" type="button" onclick="exportarAuditoriaTerraSanta()">Exportar resultado (CSV)</button><div id="tsAuditoriaResultado" style="margin-top:14px"><span class="muted">Clique em Conferir tudo para iniciar.</span></div></div>`;
+}
+let tsUltimaAuditoria=[];
+function executarAuditoriaTerraSanta(){
+ const avisos=[], compras=Array.isArray(state.compras)?state.compras:[], estoque=Array.isArray(state.estoque)?state.estoque:[], custos=Array.isArray(state.custos)?state.custos:[], tratamentos=Array.isArray(state.tratamentosSementes)?state.tratamentosSementes:[], plantios=Array.isArray(state.plantio)?state.plantio:[], aplicacoes=Array.isArray(state.aplicacoes)?state.aplicacoes:[];
+ const n=v=>Number(v||0), eq=(a,b)=>String(a??'')===String(b??''), txt=v=>String(v??'').trim(), chave=v=>chaveTexto(v), fmt=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:3}), moeda=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+ const add=(nivel,modulo,descricao,referencia)=>avisos.push({nivel,modulo,descricao,referencia:txt(referencia)});
+ const porNota=new Map();
+ compras.forEach((c,i)=>{
+  const ref='Compra '+(c.nota||('#'+(i+1)))+' — '+(c.fornecedor||'sem fornecedor');
+  const k=[chave(c.nota),chave(c.serie),chave(c.cnpjFornecedor||c.fornecedor)].join('|');
+  if(chave(c.nota)) {if(porNota.has(k))add('Crítico','Compras','Possível nota fiscal duplicada',ref);else porNota.set(k,i);}
+  const itens=Array.isArray(c.itens)?c.itens:[];
+  if(!itens.length)add('Conferir','Compras','Compra sem itens cadastrados',ref);
+  const soma=itens.reduce((a,it)=>a+n(it.valorTotal),0);
+  if(Math.abs(soma-n(c.valorTotal))>0.05)add('Conferir','Compras','Total da nota ('+moeda(c.valorTotal)+') difere da soma dos itens ('+moeda(soma)+')',ref);
+  itens.forEach((it,j)=>{
+   const ir=ref+' / '+(it.produto||'item '+(j+1));
+   if(!Number.isFinite(Number(it.quantidade))||n(it.quantidade)<0)add('Crítico','Compras','Quantidade inválida',ir);
+   if(!Number.isFinite(Number(it.valorTotal))||n(it.valorTotal)<0)add('Crítico','Compras','Valor inválido',ir);
+   const entradas=estoque.filter(e=>it.id&&eq(e.compraItemId,it.id));
+   const despesas=custos.filter(e=>it.id&&eq(e.compraItemId,it.id));
+   if((it.destino==='estoque'||it.destino==='diesel')&&entradas.length!==1)add('Crítico','Compras/Estoque','Esperada uma entrada de estoque vinculada; encontradas '+entradas.length,ir);
+   if(it.destino==='custo'&&despesas.length!==1)add('Conferir','Compras/Custos','Esperado um custo vinculado; encontrados '+despesas.length,ir);
+   if(entradas.length===1){const e=entradas[0];if(chave(e.produto)!==chave(it.produto))add('Conferir','Compras/Estoque','Nome do produto diferente entre nota e estoque',ir);if(chave(e.unidade)!==chave(it.unidade))add('Conferir','Compras/Estoque','Unidade diferente entre nota e estoque',ir);if(n(e.quantidade)>n(it.quantidade)+0.0001)add('Conferir','Compras/Estoque','Saldo em estoque maior que a quantidade comprada; conferir devoluções e ajustes',ir);}
+  });
+ });
+ estoque.forEach((e,i)=>{
+  const ref=(e.produto||'Produto sem nome')+' / lote '+(e.lote||'não informado')+' / estoque '+(i+1);
+  if(!Number.isFinite(Number(e.quantidade))||n(e.quantidade)<-0.00001)add('Crítico','Estoque','Quantidade inválida ou negativa: '+fmt(e.quantidade)+' '+(e.unidade||''),ref);
+  if(!Number.isFinite(Number(e.valor))||n(e.valor)<-0.01)add('Crítico','Estoque','Valor de estoque inválido ou negativo',ref);
+  if(e.compraId&&!compras.some(c=>eq(c.id,e.compraId)))add('Crítico','Estoque/Compras','Entrada vinculada a compra que não existe',ref);
+  if(e.compraItemId&&!compras.some(c=>(c.itens||[]).some(it=>eq(it.id,e.compraItemId))))add('Crítico','Estoque/Compras','Entrada vinculada a item de compra que não existe',ref);
+ });
+ custos.forEach((c,i)=>{
+  const ref=(c.descricao||c.categoria||'Custo')+' / registro '+(i+1);
+  if(!Number.isFinite(Number(c.valor))||n(c.valor)<0)add('Crítico','Custos','Valor inválido ou negativo',ref);
+  if(c.compraId&&!compras.some(x=>eq(x.id,c.compraId)))add('Crítico','Custos/Compras','Custo vinculado a compra ausente',ref);
+  if(c.compraItemId&&!compras.some(x=>(x.itens||[]).some(it=>eq(it.id,c.compraItemId))))add('Crítico','Custos/Compras','Custo vinculado a item de compra ausente',ref);
+  if(c.plantioId&&!plantios.some(p=>eq(p.id,c.plantioId)))add('Conferir','Custos/Plantio','Custo vinculado a plantio ausente',ref);
+  if(c.aplicacaoId&&!aplicacoes.some(a=>eq(a.id,c.aplicacaoId)))add('Conferir','Custos/Aplicações','Custo vinculado a aplicação ausente',ref);
+ });
+ tratamentos.forEach((t,i)=>{
+  const ref=(t.nome||t.semente||'Tratamento '+(i+1))+' / lote '+(t.lote||'não informado');
+  if(!Number.isFinite(Number(t.quantidade))||!Number.isFinite(Number(t.saldo))||n(t.saldo)<-0.00001||n(t.saldo)>n(t.quantidade)+0.00001)add('Crítico','Tratamentos','Saldo inválido: '+fmt(t.saldo)+' de '+fmt(t.quantidade),ref);
+  if((t.produtos||[]).some(p=>n(p.quantidade)<0||n(p.custo)<0))add('Crítico','Tratamentos','Produto com quantidade ou custo negativo',ref);
+  // Não comparar quantidade de plantio em kg com tratamentos em Bag sem conversão.
+ });
+ plantios.forEach((p,i)=>{if(p.tratamentoId&&!tratamentos.some(t=>eq(t.id,p.tratamentoId)))add('Crítico','Plantio/Tratamentos','Plantio vinculado a tratamento excluído','Plantio '+(p.talhao||i+1));});
+ const agrupados=new Map();estoque.forEach(e=>{const k=[chave(e.produto),chave(e.lote),chave(e.unidade)].join('|');if(!chave(e.produto))return;const a=agrupados.get(k)||[];a.push(e);agrupados.set(k,a)});
+ agrupados.forEach(a=>{if(a.length>1)add('Conferir','Estoque','Existem '+a.length+' entradas do mesmo produto/lote/unidade; podem ser compras distintas, conferir antes de unir',a[0].produto+' / '+(a[0].lote||'sem lote'));});
+ tsUltimaAuditoria=avisos;
+ const crit=avisos.filter(x=>x.nivel==='Crítico').length, conf=avisos.length-crit;
+ const area=document.getElementById('tsAuditoriaResultado');if(!area)return;
+ const linhas=avisos.map(a=>`<tr><td>${a.nivel==='Crítico'?'🔴':'🟡'} ${esc(a.nivel)}</td><td>${esc(a.modulo)}</td><td>${esc(a.descricao)}</td><td>${esc(a.referencia)}</td></tr>`).join('');
+ area.innerHTML=`<p><b>${crit} alerta(s) crítico(s)</b> • ${conf} item(ns) para conferir • ${compras.length} compra(s), ${estoque.length} entrada(s) de estoque, ${custos.length} custo(s), ${tratamentos.length} tratamento(s) analisados.</p><div style="overflow-x:auto"><table><thead><tr><th>Nível</th><th>Módulo</th><th>Possível problema</th><th>Referência</th></tr></thead><tbody>${linhas||'<tr><td colspan="4">Nenhuma divergência encontrada nas verificações disponíveis.</td></tr>'}</tbody></table></div><p class="muted">Avisos são indícios para conferência, não correções automáticas. Não é possível reconstituir com certeza exclusões anteriores sem registros de origem. Saldo físico deve ser conferido separadamente.</p>`;
+}
+function exportarAuditoriaTerraSanta(){
+ if(!document.querySelector('#tsAuditoriaResultado table')){alert('Execute Conferir tudo antes de exportar.');return;}
+ const linhas=[['Nível','Módulo','Possível problema','Referência'],...tsUltimaAuditoria.map(a=>[a.nivel,a.modulo,a.descricao,a.referencia])];
+ const csv='\uFEFF'+linhas.map(l=>l.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='auditoria_terra_santa.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+}
 </script>
 </body></html>
