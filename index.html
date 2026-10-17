@@ -824,25 +824,74 @@ async function salvarCompra(){
  try{
   if(itens.length!==(compraAnterior.itens||[]).length)throw new Error('Para evitar perda de vínculos, não é possível adicionar ou remover itens nesta edição.');
   const alteracoes=[];
+  const avisos=[];
+  const normalUnidade=u=>/^(beg|bag|bags)$/i.test(String(u||'').trim())?'bag':String(u||'').trim().toLowerCase();
   for(let j=0;j<itens.length;j++){
    const novo=itens[j],velho=compraAnterior.itens[j];
    if(novo.destino!==velho.destino)throw new Error('Não altere o destino de um item já lançado.');
    const entradas=(state.estoque||[]).filter(e=>String(e.compraItemId||'')===String(velho.id));
    const despesas=(state.custos||[]).filter(e=>String(e.compraItemId||'')===String(velho.id));
+   const mesmaQtd=Math.abs(Number(novo.quantidade||0)-Number(velho.quantidade||0))<0.000001;
+   const mesmoProduto=chaveTexto(novo.produto)===chaveTexto(velho.produto);
+   const unidadeEquivalente=normalUnidade(novo.unidade)===normalUnidade(velho.unidade);
+   const soPrecoOuGrafia=mesmaQtd&&mesmoProduto&&unidadeEquivalente;
    if(velho.destino==='estoque'||velho.destino==='diesel'){
-    if(entradas.length!==1)throw new Error('Não foi possível identificar uma única entrada de estoque para '+velho.produto+'.');
-    const e=entradas[0],consumido=Number(velho.quantidade||0)-Number(e.quantidade||0);
-    if(novo.unidade!==velho.unidade&&consumido>0.00001)throw new Error('Não altere a unidade de '+velho.produto+' após consumo.');
-    if(Number(novo.quantidade)<consumido-0.00001)throw new Error('A quantidade de '+velho.produto+' não pode ser menor que o já consumido ('+consumido+').');
-    if((chaveTexto(novo.produto)!==chaveTexto(velho.produto)||novo.unidade!==velho.unidade)&&consumido>0.00001)throw new Error('Produto consumido não pode mudar de nome ou unidade: '+velho.produto);
-    alteracoes.push(()=>{Object.assign(e,{produto:novo.produto,produtoId:novo.produtoId,produtoChave:novo.produtoChave,categoria:novo.categoria,quantidade:Number(novo.quantidade)-consumido,unidade:novo.unidade,valor:Number(e.valor||0)+Number(novo.valorTotal||0)-Number(velho.valorTotal||0),nota,fornecedor,dataNota:data});});
+    if(entradas.length!==1&&!soPrecoOuGrafia)throw new Error('Estoque sem vínculo único: só é possível corrigir preço e grafia de unidade sem alterar quantidade ou produto.');
+    if(entradas.length>1)throw new Error('Há mais de uma entrada de estoque vinculada a '+velho.produto+'. Faça a conferência antes de salvar.');
+    const e=entradas[0];
+    if(e){
+     const consumido=Number(velho.quantidade||0)-Number(e.quantidade||0);
+     if(!unidadeEquivalente&&consumido>0.00001)throw new Error('Não é seguro converter a unidade de um produto já consumido.');
+     if(Number(novo.quantidade)<consumido-0.00001)throw new Error('Quantidade inferior à já consumida: '+velho.produto);
+     if(!mesmoProduto&&consumido>0.00001)throw new Error('Produto consumido não pode ser trocado por outro.');
+     alteracoes.push(()=>{const valorSaldo=soPrecoOuGrafia&&Number(velho.quantidade)>0
+      ?Number(e.valor||0)+(Number(novo.valorTotal||0)-Number(velho.valorTotal||0))*Number(e.quantidade||0)/Number(velho.quantidade||1)
+      :Number(e.valor||0)+Number(novo.valorTotal||0)-Number(velho.valorTotal||0);
+      Object.assign(e,{produto:novo.produto,produtoId:novo.produtoId,produtoChave:novo.produtoChave,categoria:novo.categoria,quantidade:Number(novo.quantidade)-consumido,unidade:novo.unidade,valor:Math.max(0,valorSaldo),nota,fornecedor,dataNota:data});});
+    }else avisos.push('A entrada de estoque de '+velho.produto+' não foi localizada; nenhum saldo foi criado ou alterado.');
+    const diferencaUnit=Number(novo.quantidade)>0?Number(novo.valorTotal||0)/Number(novo.quantidade):0;
+    const precoAnterior=Number(velho.quantidade)>0?Number(velho.valorTotal||0)/Number(velho.quantidade):0;
+    const delta=diferencaUnit-precoAnterior;
+    if(soPrecoOuGrafia&&Math.abs(delta)>0.0000001){
+     // Sem identificador de origem no tratamento, só repassar custo quando
+     // houver uma única compra com esse produto (evita atribuição errada).
+     const comprasComProduto=(state.compras||[]).filter(c=>(c.itens||[]).some(it=>chaveTexto(it.produto)===chaveTexto(velho.produto)));
+     const tratamentos=(state.tratamentosSementes||[]).filter(t=>chaveTexto(t.semente)===chaveTexto(velho.produto)&&(!e?.id||!t.sementeEstoqueId||String(t.sementeEstoqueId)===String(e.id)));
+     if(tratamentos.length&&comprasComProduto.length!==1){
+      throw new Error('Há mais de uma compra da semente '+velho.produto+'. Não é possível recalcular os tratamentos com segurança sem identificar a origem. Nenhuma alteração foi aplicada.');
+     }
+     alteracoes.push(()=>{
+      for(const tr of tratamentos){
+       const quantidade=Number(tr.baixaSemente||0);
+       const ajuste=quantidade*delta;
+       tr.custoSemente=Number(tr.custoSemente||0)+ajuste;
+       tr.custoTotal=Number(tr.custoTotal||0)+ajuste;
+       const qb=Number(tr.quantidadeBags||0),qkg=Number(tr.quantidadeKg||0);
+       tr.custoBag=qb>0?tr.custoTotal/qb:0;
+       tr.custoKg=qkg>0?tr.custoTotal/qkg:0;
+       for(const pl of state.plantio||[]){
+        if(String(pl.tratamentoId||'')!==String(tr.id||''))continue;
+        const qtd=Number(pl.quantidadeTotal??pl.qtdSemente??0);
+        const unit=typeof custoUnitTratamento==='function'?custoUnitTratamento(tr):0;
+        pl.custoSemente=qtd*unit;
+        pl.custoHa=Number(pl.areaPlantada)>0?pl.custoSemente/Number(pl.areaPlantada):0;
+        const custo=(state.custos||[]).find(c=>String(c.plantioId||'')===String(pl.id||'')||String(c.id||'')==='custo_'+pl.id);
+        if(custo)custo.valor=pl.custoSemente;
+       }
+      }
+     });
+     if(!tratamentos.length)avisos.push('Não foi identificado tratamento vinculado a '+velho.produto+' para recalcular; confira os custos na auditoria.');
+    }
+    if(soPrecoOuGrafia&&novo.unidade!==velho.unidade){
+     alteracoes.push(()=>{for(const tr of state.tratamentosSementes||[]){if(chaveTexto(tr.semente)===chaveTexto(velho.produto)&&normalUnidade(tr.unidadeEstoqueSemente)===normalUnidade(velho.unidade))tr.unidadeEstoqueSemente=novo.unidade;}});
+    }
    }else if(velho.destino==='custo'){
     if(despesas.length!==1)throw new Error('Custo da compra não encontrado para '+velho.produto);
     alteracoes.push(()=>Object.assign(despesas[0],{descricao:novo.produto,categoria:novo.categoria,valor:novo.valorTotal,fornecedor,nota,data}));
    }
   }
   alteracoes.forEach(f=>f());Object.assign(compraAnterior,{nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});
-  await salvarEstado();compraEditandoId=null;apagarRascunhoCompra();alert('Nota atualizada sem duplicar a compra.');go('compras');return;
+  await salvarEstado();compraEditandoId=null;apagarRascunhoCompra();alert('Nota atualizada sem duplicar a compra.'+(avisos.length?'\n\nAtenção: '+avisos.join('\n'):''));go('compras');return;
  }catch(e){state=JSON.parse(anterior);saveLocal();alert('Alteração não aplicada: '+e.message);return;}
 }
 state.compras.push({id:compraId,nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});await salvarEstado();apagarRascunhoCompra();alert('Compra salva e itens enviados aos destinos escolhidos.');go('compras')}
