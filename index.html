@@ -553,7 +553,7 @@ return `${resumoModulo(type)}<div class="row"><div><h1 style="margin:0">${title}
 <div id="${type}Form" class="panel" style="display:none">${formHtml}</div>
 <div class="panel"><div class="toolbar"><input placeholder="Pesquisar..." oninput="filtrarTabela(this)"></div><div style="overflow-x:auto"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum cadastro ainda.</td></tr>`}</tbody></table></div></div>`;
 }
-function toggleForm(id){let e=document.getElementById(id+"Form");if(e)e.style.display=e.style.display==="none"?"block":"none"}
+function toggleForm(id){let e=document.getElementById(id+"Form");if(id==='compras'&&e&&e.style.display==='none'){compraEditandoId=null;const r=document.getElementById('compraReview');if(r)r.innerHTML='';}if(e)e.style.display=e.style.display==="none"?"block":"none"}
 function novaAplicacao(){
  limparRascunhoPagina('aplicacoes');
  const box=document.getElementById('produtosAplicacao');if(box)box.innerHTML='';
@@ -702,15 +702,24 @@ function compras(){
 function selecionarDocumentoCompra(inp){const f=inp?.files?.[0];if(!f)return;const alvo=document.getElementById('compraFoto');try{const dt=new DataTransfer();dt.items.add(f);alvo.files=dt.files}catch(e){}if(f.type.startsWith('image/'))preverFoto(inp,'compraPreview');else{const im=document.getElementById('compraPreview');if(im)im.style.display='none'}const st=document.getElementById('compraStatus');if(st)st.textContent='Arquivo selecionado: '+f.name+' • iniciando leitura…';lerCompraIA(f)}
 let compraEditandoId=null;
 function editarCompraCompleta(i){
- const c=(state.compras||[])[i];if(!c)return alert('Compra não encontrada.');
- go('compras');setTimeout(()=>{
-  compraEditandoId=c.id;
+ const c=(state.compras||[])[i];
+ if(!c)return alert('Compra não encontrada.');
+ // O formulário de compras fica oculto por padrão. Abrir antes de preencher.
+ if(!document.getElementById('compraReview')){go('compras');}
+ const painel=document.getElementById('comprasForm');
+ const review=document.getElementById('compraReview');
+ if(!painel||!review)return alert('Não foi possível abrir o formulário. Reabra Compras e tente novamente.');
+ painel.style.display='block';
+ compraEditandoId=c.id;
+ try{
   mostrarCompraIA({numero_nota:c.nota,serie:c.serie,data_emissao:c.data,fornecedor:c.fornecedor,cnpj_fornecedor:c.cnpjFornecedor,produtos:(c.itens||[]).map(x=>({descricao:x.produto,quantidade:x.quantidade,unidade:x.unidade,valor_unitario:x.valorUnit,valor_total:x.valorTotal,categoria:x.categoria,destino:x.destino}))});
-  const b=document.querySelector('#compraReview button[onclick="salvarCompra()"]');if(b)b.textContent='Salvar alterações nesta compra';
-  const titulo=document.querySelector('#compraReview b');if(titulo)titulo.textContent='Editar nota fiscal existente';
- },180);
+  const btn=review.querySelector('button[onclick="salvarCompra()"]');
+  if(btn)btn.textContent='Salvar alterações nesta compra';
+  const titulo=review.querySelector('.panel > b');if(titulo)titulo.textContent='Editar nota fiscal existente';
+  painel.scrollIntoView({behavior:'smooth',block:'start'});
+ }catch(err){compraEditandoId=null;alert('Erro ao abrir edição: '+(err.message||err));}
 }
-function novaCompraManual(){mostrarCompraIA({produtos:[{descricao:'',quantidade:'',unidade:'un',valor_unitario:'',valor_total:'',categoria:'Outros'}]});const st=document.getElementById('compraStatus');if(st)st.textContent='⌨️ Preenchimento manual. Complete os campos e salve.';salvarRascunhoCompra()}
+function novaCompraManual(){compraEditandoId=null;mostrarCompraIA({produtos:[{descricao:'',quantidade:'',unidade:'un',valor_unitario:'',valor_total:'',categoria:'Outros'}]});const st=document.getElementById('compraStatus');if(st)st.textContent='⌨️ Preenchimento manual. Complete os campos e salve.';salvarRascunhoCompra()}
 function compraDuplicada(nota,serie,cnpj){const n=chaveTexto(nota),s=chaveTexto(serie),c=chaveTexto(cnpj);return (state.compras||[]).some(x=>chaveTexto(x.nota)===n&&(!s||chaveTexto(x.serie)===s)&&(!c||chaveTexto(x.cnpjFornecedor)===c))}
 function lerArquivoDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Não consegui abrir o arquivo selecionado.'));r.readAsDataURL(file)})}
 function arquivoDataURL(file,max=4200){return new Promise((resolve,reject)=>{const im=new Image(),r=new FileReader();r.onload=()=>{im.onload=()=>{try{let w=im.naturalWidth||im.width,h=im.naturalHeight||im.height;if(!w||!h)throw new Error('Imagem sem tamanho válido.');const sc=Math.min(1,max/Math.max(w,h));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*sc));c.height=Math.max(1,Math.round(h*sc));const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.94))}catch(e){reject(e)}};im.onerror=()=>reject(new Error('Formato da foto não pôde ser aberto. No iPhone, tente compartilhar/salvar a foto como JPEG ou use uma captura de tela.'));im.src=r.result};r.onerror=()=>reject(new Error('Não consegui ler a foto selecionada.'));r.readAsDataURL(file)})}
@@ -813,7 +822,7 @@ async function salvarCompra(){
  state.compras=state.compras||[];state.estoque=state.estoque||[];state.custos=state.custos||[];const nota=cpNota.value.trim(),serie=cpSerie.value.trim(),fornecedor=cpFornecedor.value.trim(),cnpj=cpCnpj.value.trim(),data=cpData.value;if(nota&&(state.compras||[]).some(x=>x.id!==compraEditandoId&&chaveTexto(x.nota)===chaveTexto(nota)&&(!serie||chaveTexto(x.serie)===chaveTexto(serie))&&(!cnpj||chaveTexto(x.cnpjFornecedor)===chaveTexto(cnpj)))){alert('⚠️ Esta nota já está em Compras.');return}validarItensCompraIA();const criticos=[...document.querySelectorAll('#cpItens .notaItem')].filter(r=>r.dataset.conferenciaCritica==='1');if(criticos.length&&!confirm('⚠️ Há '+criticos.length+' item(ns) com valores que precisam de conferência.\n\nDeseja salvar mesmo assim?'))return;const compraAnterior=compraEditandoId?(state.compras||[]).find(c=>c.id===compraEditandoId):null,compraId=compraAnterior?.id||('cmp_'+Date.now()),itens=[];let total=0,itemSeq=0;for(const row of document.querySelectorAll('#cpItens .notaItem')){const g=k=>row.querySelector(`[data-k="${k}"]`)?.value||'';const produtoRef=resolverProduto(g('produto')),produto=produtoRef.nome,q=numeroIA(g('quantidade'))||0,vu=numeroIA(g('valorUnit'))||0;let vt=numeroIA(g('valorTotal'))||0;if(!vt&&q&&vu)vt=q*vu;if(!produto)continue;const itemId=compraAnterior?.itens?.[itemSeq]?.id||(compraId+'_item_'+(itemSeq+1));itemSeq++;const it={id:itemId,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,quantidade:q,unidade:g('unidade'),valorUnit:q?vt/q:vu,valorTotal:vt,categoria:g('categoria'),destino:g('destino')};itens.push(it);total+=vt;if(!compraAnterior&&(it.destino==='estoque'||it.destino==='diesel'))state.estoque.push({id:'est_'+Date.now()+'_'+itemSeq,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,categoria:it.categoria,quantidade:q,unidade:it.unidade,valor:vt,nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:itemId});else if(!compraAnterior&&it.destino==='custo')state.custos.push({data,descricao:produto,categoria:it.categoria,valor:vt,safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:itemId})}if(!itens.length){alert('Nenhum item para salvar.');return}if(compraAnterior){
  const anterior=JSON.stringify(state);
  try{
-  if(itens.length!==compraAnterior.itens.length)throw new Error('Para evitar perda de vínculos, não é possível adicionar ou remover itens nesta edição.');
+  if(itens.length!==(compraAnterior.itens||[]).length)throw new Error('Para evitar perda de vínculos, não é possível adicionar ou remover itens nesta edição.');
   const alteracoes=[];
   for(let j=0;j<itens.length;j++){
    const novo=itens[j],velho=compraAnterior.itens[j];
