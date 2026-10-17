@@ -426,7 +426,29 @@ async function enviarEstadoLocal(){
  for(const k of ["talhoes","safras","aplicacoes","plantio","maquinas","caminhoes","dieselCaminhoes","diesel","estoque","custos","colheita","romaneios","vendas","pluviometria","movimentacoes","tratamentosSementes","compras","titulares","mapasDados"]) if(Array.isArray(local[k])||Array.isArray(rd[k])) dados[k]=unirListasTipo(k,local[k]||[],rd[k]||[],excluidos);
  await supabaseRequest("app_state?id=eq.1",{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({dados})}); state={...state,...dados,fazendas:state.fazendas||[]}; saveLocal(); marcarSyncPendente(false);
 }
+// Histórico de movimentações: compara o estoque salvo anteriormente com o estoque atual.
+// Começa a registrar após a instalação; não inventa lançamentos anteriores.
+function registrarHistoricoEstoqueAutomatico(){
+ try{
+  const chave='ts_estoque_referencia_v1';
+  const atual=(state.estoque||[]).map((x,i)=>({id:String(x.id||''),produto:String(x.produto||''),lote:String(x.lote||''),unidade:String(x.unidade||''),quantidade:Number(x.quantidade||0),valor:Number(x.valor||0),indice:i}));
+  const anteriorTexto=localStorage.getItem(chave);
+  if(!anteriorTexto){localStorage.setItem(chave,JSON.stringify(atual));return;}
+  const anterior=JSON.parse(anteriorTexto);
+  if(!Array.isArray(anterior))return;
+  const chaveItem=x=>x.id?'id:'+x.id:'nome:'+chaveTexto(x.produto)+'|'+chaveTexto(x.lote)+'|'+chaveTexto(x.unidade)+'|'+x.indice;
+  const antes=new Map(anterior.map(x=>[chaveItem(x),x]));
+  const depois=new Map(atual.map(x=>[chaveItem(x),x]));
+  const alteracoes=[];
+  for(const [key,item] of depois){const ant=antes.get(key);const diferenca=item.quantidade-Number(ant?.quantidade||0);if(Math.abs(diferenca)>0.0000001)alteracoes.push({id:'mov_'+Date.now()+'_'+alteracoes.length+'_'+Math.random().toString(36).slice(2,8),data:new Date().toISOString(),produto:item.produto,lote:item.lote,unidade:item.unidade,quantidade:diferenca,saldoAnterior:Number(ant?.quantidade||0),saldoAtual:item.quantidade,valorAnterior:Number(ant?.valor||0),valorAtual:item.valor,estoqueId:item.id,origem:ant?(diferenca>0?'Entrada / devolução / ajuste':'Consumo / saída / ajuste'):'Cadastro / entrada',observacao:'Movimentação detectada automaticamente no salvamento'});}
+  for(const [key,item] of antes){if(!depois.has(key)&&Math.abs(Number(item.quantidade||0))>0.0000001)alteracoes.push({id:'mov_'+Date.now()+'_'+alteracoes.length+'_'+Math.random().toString(36).slice(2,8),data:new Date().toISOString(),produto:item.produto,lote:item.lote,unidade:item.unidade,quantidade:-Number(item.quantidade||0),saldoAnterior:Number(item.quantidade||0),saldoAtual:0,estoqueId:item.id,origem:'Exclusão de entrada do estoque',observacao:'Entrada removida; confira se havia vínculos'});}
+  state.historicoEstoque=Array.isArray(state.historicoEstoque)?state.historicoEstoque:[];
+  if(alteracoes.length)state.historicoEstoque.push(...alteracoes);
+  localStorage.setItem(chave,JSON.stringify(atual));
+ }catch(e){console.warn('Histórico de estoque não atualizado:',e)}
+}
 async function salvarEstado(){
+ registrarHistoricoEstoqueAutomatico();
  try{localStorage.setItem("terraSantaBackupAutomatico",JSON.stringify({data:new Date().toISOString(),state}))}catch(e){}
  saveLocal(); marcarSyncPendente(true);
  if(!navigator.onLine)return false;
@@ -616,7 +638,7 @@ function previewTratamento(){const seed=state.estoque?.[Number(document.getEleme
 function localizarEstoqueTratamento(tr,produto,lote='',unidade=''){return (state.estoque||[]).find(x=>chaveTexto(x.produto)===chaveTexto(produto)&&(!lote||chaveTexto(x.lote)===chaveTexto(lote))&&(!unidade||String(x.unidade||'').toLowerCase()===String(unidade||'').toLowerCase()))||(state.estoque||[]).find(x=>chaveTexto(x.produto)===chaveTexto(produto))}
 function devolverTratamentoAoEstoque(tr){if(!tr)return;const seed=localizarEstoqueTratamento(tr,tr.semente,tr.lote,tr.unidadeEstoqueSemente||'');if(seed){const q=Number(tr.baixaSemente||tr.quantidade||0);seed.quantidade=Number(seed.quantidade||0)+q;seed.valor=Number(seed.valor||0)+Number(tr.custoSemente||0)}for(const p of tr.produtos||[]){const item=localizarEstoqueTratamento(tr,p.produto,'',p.unidade);if(item){item.quantidade=Number(item.quantidade||0)+Number(p.quantidade||0);item.valor=Number(item.valor||0)+Number(p.custo||0)}}}
 async function editarTratamentoSemente(i){const tr=state.tratamentosSementes?.[i];if(!tr)return;tratamentoEditandoPendente=String(tr.id||('idx_'+i));limparRascunhoPagina('tratamentoSementes');try{localStorage.removeItem('ts_draft_tratamentoSementes')}catch(e){}go('tratamentoSementes');setTimeout(()=>{const id=document.getElementById('tseditid');if(!id)return;tratamentoEditandoPendente=null;id.value=tr.id||'';tsnome.value=tr.nome||'';tsdata.value=tr.data||'';tssafra.value=tr.safra||'';tscultura.value=tr.cultura||'Soja';const si=(state.estoque||[]).findIndex(x=>chaveTexto(x.produto)===chaveTexto(tr.semente)&&(!tr.lote||chaveTexto(x.lote)===chaveTexto(tr.lote)));if(si>=0)tssemente.value=String(si);tsunidadeqtd.value=String(tr.unidadeTratada||'kg').toLowerCase()==='bag'?'bag':'kg';tsqtd.value=tr.quantidade||'';tspesobag.value=tr.pesoBagKg||'';tsmodo.value=tr.modoDosagem==='bag'?'bag':'kg';document.getElementById('tsProdutos').innerHTML='';for(const p of tr.produtos||[])addLinhaTratamento(p.produto,p.dose);document.getElementById('tsSalvarBtn').textContent='Salvar alterações';const f=document.getElementById('tratamentoSementesForm');if(f)f.style.display='block';atualizarUnidadeTratamento();atualizarModoTratamento();previewTratamento()},250)}
-async function addTratamentoSemente(e){e.preventDefault();state.tratamentosSementes=state.tratamentosSementes||[];const editId=document.getElementById('tseditid')?.value||'',old=editId?state.tratamentosSementes.find(x=>x.id===editId):null;if(old)devolverTratamentoAoEstoque(old);try{const si=Number(tssemente.value),seed=state.estoque[si],unQtd=document.getElementById('tsunidadeqtd')?.value||'kg',modo=document.getElementById('tsmodo')?.value||'kg',entrada=Number(tsqtd.value||0),pesoBag=Number(document.getElementById('tspesobag')?.value||0),kgTratados=unQtd==='bag'?(pesoBag>0?entrada*pesoBag:0):entrada,bagsTratados=unQtd==='bag'?entrada:(pesoBag>0?entrada/pesoBag:0);if(!seed||entrada<=0)throw new Error('Confira a semente e a quantidade a tratar.');const seedUn=String(seed.unidade||'').toLowerCase();let baixaSemente;if(unQtd==='bag'&&ehBag(seed.unidade))baixaSemente=entrada;else if(unQtd==='kg'&&seedUn==='kg')baixaSemente=entrada;else if(seedUn==='kg'&&kgTratados>0)baixaSemente=kgTratados;else throw new Error('A unidade escolhida não corresponde à unidade da semente no estoque.');if(Number(seed.quantidade||0)<baixaSemente)throw new Error('Estoque de semente insuficiente.');if(modo==='kg'&&kgTratados<=0)throw new Error('Para usar dose por 100 kg, informe o peso de cada bag.');if(modo==='bag'&&bagsTratados<=0)throw new Error('Para usar dose por bag, informe a quantidade em Bag ou o peso de cada bag.');const linhas=[...document.querySelectorAll('.tsLinha')];let prods=[],custoTrat=0;for(const l of linhas){const item=state.estoque[Number(l.querySelector('.tsProduto').value)],dose=Number(l.querySelector('.tsDose').value||0);if(!item||dose<=0)continue;const usar=modo==='bag'?dose*bagsTratados:dose*kgTratados/100;if(Number(item.quantidade||0)<usar)throw new Error('Estoque insuficiente de '+item.produto);const unit=valorUnitarioEstoque(item);prods.push({produto:item.produto,estoqueId:item.id||null,lote:item.lote||'',dose,doseModo:modo==='bag'?'bag':'100kg',quantidade:usar,unidade:item.unidade,custo:usar*unit,item});custoTrat+=usar*unit}const seedUnit=valorUnitarioEstoque(seed),custoSemente=seedUnit*baixaSemente;seed.quantidade=Number(seed.quantidade)-baixaSemente;seed.valor=Math.max(0,Number(seed.valor||0)-custoSemente);for(const p of prods){p.item.quantidade=Number(p.item.quantidade)-p.quantidade;p.item.valor=Math.max(0,Number(p.item.valor||0)-p.custo);delete p.item}const custoTotal=custoSemente+custoTrat,custoKg=kgTratados>0?custoTotal/kgTratados:0,custoBag=bagsTratados>0?custoTotal/bagsTratados:0,registro={id:old?.id||('ts_'+Date.now()),nome:tsnome.value,data:tsdata.value,safra:tssafra.value||safraAtivaNome(),cultura:tscultura.value,semente:seed.produto,sementeEstoqueId:seed.id||null,lote:seed.lote||'',unidadeEstoqueSemente:seed.unidade,baixaSemente,unidadeTratada:unQtd,modoDosagem:modo,quantidadeBags:bagsTratados||null,pesoBagKg:pesoBag||null,quantidade:entrada,quantidadeKg:kgTratados||null,saldo:old?Math.max(0,entrada-Math.max(0,Number(old.quantidade||0)-Number(old.saldo||0))):entrada,custoSemente,custoTratamento:custoTrat,custoTotal,custoKg,custoBag,produtos:prods};if(old){const idx=state.tratamentosSementes.indexOf(old);state.tratamentosSementes[idx]=registro}else state.tratamentosSementes.push(registro);await salvarEstado();limparRascunhoPagina('tratamentoSementes');go('tratamentoSementes')}catch(err){if(old){/* volta o estoque ao estado anterior caso a edição falhe */const seedOld=localizarEstoqueTratamento(old,old.semente,old.lote,old.unidadeEstoqueSemente||'');if(seedOld){const q=Number(old.baixaSemente||old.quantidade||0);seedOld.quantidade=Number(seedOld.quantidade||0)-q;seedOld.valor=Math.max(0,Number(seedOld.valor||0)-Number(old.custoSemente||0))}for(const p of old.produtos||[]){const item=localizarEstoqueTratamento(old,p.produto,'',p.unidade);if(item){item.quantidade=Number(item.quantidade||0)-Number(p.quantidade||0);item.valor=Math.max(0,Number(item.valor||0)-Number(p.custo||0))}}}alert(err.message)}}
+async function addTratamentoSemente(e){e.preventDefault();state.tratamentosSementes=state.tratamentosSementes||[];const editId=document.getElementById('tseditid')?.value||'',old=editId?state.tratamentosSementes.find(x=>x.id===editId):null;if(old&&(state.plantio||[]).some(p=>String(p.tratamentoId||'')===String(old.id||''))){alert('Este tratamento já foi utilizado no plantio. Para proteger os saldos, a edição fica bloqueada até revisar os plantios vinculados.');return}const estadoAntesTratamento=JSON.stringify(state);if(old)devolverTratamentoAoEstoque(old);try{const si=Number(tssemente.value),seed=state.estoque[si],unQtd=document.getElementById('tsunidadeqtd')?.value||'kg',modo=document.getElementById('tsmodo')?.value||'kg',entrada=Number(tsqtd.value||0),pesoBag=Number(document.getElementById('tspesobag')?.value||0),kgTratados=unQtd==='bag'?(pesoBag>0?entrada*pesoBag:0):entrada,bagsTratados=unQtd==='bag'?entrada:(pesoBag>0?entrada/pesoBag:0);if(!seed||entrada<=0)throw new Error('Confira a semente e a quantidade a tratar.');const seedUn=String(seed.unidade||'').toLowerCase();let baixaSemente;if(unQtd==='bag'&&ehBag(seed.unidade))baixaSemente=entrada;else if(unQtd==='kg'&&seedUn==='kg')baixaSemente=entrada;else if(seedUn==='kg'&&kgTratados>0)baixaSemente=kgTratados;else throw new Error('A unidade escolhida não corresponde à unidade da semente no estoque.');if(Number(seed.quantidade||0)<baixaSemente)throw new Error('Estoque de semente insuficiente.');if(modo==='kg'&&kgTratados<=0)throw new Error('Para usar dose por 100 kg, informe o peso de cada bag.');if(modo==='bag'&&bagsTratados<=0)throw new Error('Para usar dose por bag, informe a quantidade em Bag ou o peso de cada bag.');const linhas=[...document.querySelectorAll('.tsLinha')];let prods=[],custoTrat=0;for(const l of linhas){const item=state.estoque[Number(l.querySelector('.tsProduto').value)],dose=Number(l.querySelector('.tsDose').value||0);if(!item||dose<=0)continue;const usar=modo==='bag'?dose*bagsTratados:dose*kgTratados/100;if(Number(item.quantidade||0)<usar)throw new Error('Estoque insuficiente de '+item.produto);const unit=valorUnitarioEstoque(item);prods.push({produto:item.produto,estoqueId:item.id||null,lote:item.lote||'',dose,doseModo:modo==='bag'?'bag':'100kg',quantidade:usar,unidade:item.unidade,custo:usar*unit,item});custoTrat+=usar*unit}const seedUnit=valorUnitarioEstoque(seed),custoSemente=seedUnit*baixaSemente;seed.quantidade=Number(seed.quantidade)-baixaSemente;seed.valor=Math.max(0,Number(seed.valor||0)-custoSemente);for(const p of prods){p.item.quantidade=Number(p.item.quantidade)-p.quantidade;p.item.valor=Math.max(0,Number(p.item.valor||0)-p.custo);delete p.item}const custoTotal=custoSemente+custoTrat,custoKg=kgTratados>0?custoTotal/kgTratados:0,custoBag=bagsTratados>0?custoTotal/bagsTratados:0,registro={id:old?.id||('ts_'+Date.now()),nome:tsnome.value,data:tsdata.value,safra:tssafra.value||safraAtivaNome(),cultura:tscultura.value,semente:seed.produto,sementeEstoqueId:seed.id||null,lote:seed.lote||'',unidadeEstoqueSemente:seed.unidade,baixaSemente,unidadeTratada:unQtd,modoDosagem:modo,quantidadeBags:bagsTratados||null,pesoBagKg:pesoBag||null,quantidade:entrada,quantidadeKg:kgTratados||null,saldo:old?Math.max(0,entrada-Math.max(0,Number(old.quantidade||0)-Number(old.saldo||0))):entrada,custoSemente,custoTratamento:custoTrat,custoTotal,custoKg,custoBag,produtos:prods};if(old){const idx=state.tratamentosSementes.indexOf(old);state.tratamentosSementes[idx]=registro}else state.tratamentosSementes.push(registro);await salvarEstado();limparRascunhoPagina('tratamentoSementes');go('tratamentoSementes')}catch(err){if(old){/* volta o estoque ao estado anterior caso a edição falhe */const seedOld=localizarEstoqueTratamento(old,old.semente,old.lote,old.unidadeEstoqueSemente||'');if(seedOld){const q=Number(old.baixaSemente||old.quantidade||0);seedOld.quantidade=Number(seedOld.quantidade||0)-q;seedOld.valor=Math.max(0,Number(seedOld.valor||0)-Number(old.custoSemente||0))}for(const p of old.produtos||[]){const item=localizarEstoqueTratamento(old,p.produto,'',p.unidade);if(item){item.quantidade=Number(item.quantidade||0)-Number(p.quantidade||0);item.valor=Math.max(0,Number(item.valor||0)-Number(p.custo||0))}}}alert(err.message)}}
 function areaJaPlantadaTalhao(nome,safra,ignorarId=''){return (state.plantio||[]).filter(x=>x.talhao===nome&&(!safra||x.safra===safra)&&x.id!==ignorarId).reduce((a,x)=>a+Number(x.areaPlantada||state.talhoes.find(t=>t.nome===x.talhao)?.area||0),0)}
 function atualizarAreaPlantio(){const sel=document.getElementById('ptalhao'),t=state.talhoes.find(x=>String(x.nome||'').trim().toLowerCase()===String(sel?.value||'').trim().toLowerCase())||state.talhoes[sel?.selectedIndex],safra=document.getElementById('psafra')?.value||safraAtivaNome(),info=document.getElementById('pareaInfo'),inp=document.getElementById('parea');if(!t||!info)return;const total=Number(t.area||0),ja=areaJaPlantadaTalhao(t.nome,safra),rest=Math.max(0,total-ja);info.innerHTML=`Área do talhão: <b>${total.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b> • Já plantado: <b>${ja.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b> • Restante: <b>${rest.toLocaleString('pt-BR',{maximumFractionDigits:2})} ha</b>`;if(inp&&!inp.value&&rest>0)inp.value=rest}
 function atualizarUnidadePlantio(){const tr=(state.tratamentosSementes||[]).find(x=>x.id===document.getElementById('ptrat')?.value),un=tr?unidadeTratamentoLabel(tr):'',lab=document.getElementById('psementeLabel'),info=document.getElementById('psementeUnidade');if(lab)lab.textContent=tr?`Quantidade total utilizada (${un})`:'Quantidade total de semente utilizada';if(info)info.textContent=tr?`Saldo disponível: ${Number(tr.saldo||0).toLocaleString('pt-BR')} ${un}`:''}
@@ -674,10 +696,20 @@ async function addManutencao(e){
 
 function compras(){
  state.compras=state.compras||[];
- const rows=state.compras.map((x,i)=>`<tr><td>${esc(x.data||'-')}</td><td>${esc(x.fornecedor||'-')}</td><td>${esc(x.nota||'-')}</td><td>${(x.itens||[]).length}</td><td>R$ ${Number(x.valorTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td><button class="danger" onclick="excluirCompra(${i})">Excluir</button></td></tr>`).join('');
+ const rows=state.compras.map((x,i)=>`<tr><td>${esc(x.data||'-')}</td><td>${esc(x.fornecedor||'-')}</td><td>${esc(x.nota||'-')}</td><td>${(x.itens||[]).length}</td><td>R$ ${Number(x.valorTotal||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td><button class="secondary" onclick="editarCompraCompleta(${i})">Editar</button> <button class="danger" onclick="excluirCompra(${i})">Excluir</button></td></tr>`).join('');
  return listPage('compras','Compras','Notas de diesel, peças, produtos, sementes, fertilizantes e outras compras entram primeiro aqui.','+ Nova Compra',`<div class="panel"><b>🧾 Novo lançamento de nota</b><div class="muted" style="margin:6px 0 10px">Escolha como deseja lançar. Foto ou arquivo passam pela IA e depois ficam disponíveis para conferência.</div><div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="primary" onclick="document.getElementById('compraCamera').click()">📷 Tirar foto</button><button type="button" class="secondary" onclick="document.getElementById('compraGaleria').click()">🖼️ Escolher foto</button><button type="button" class="secondary" onclick="document.getElementById('compraArquivo').click()">📄 Escolher arquivo</button><button type="button" class="secondary" onclick="novaCompraManual()">⌨️ Digitar manualmente</button></div><input id="compraCamera" type="file" accept="image/*" capture="environment" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraGaleria" type="file" accept="image/*" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraArquivo" type="file" accept="image/*,application/pdf" style="display:none" onchange="selecionarDocumentoCompra(this)"><input id="compraFoto" type="file" style="display:none"><img id="compraPreview" class="cameraPreview"><div id="compraStatus" class="ocrStatus">Escolha uma das quatro opções acima.</div></div><div id="compraReview" style="margin-top:12px"></div>`,rows,['Data','Fornecedor','Nota','Itens','Valor','']);
 }
 function selecionarDocumentoCompra(inp){const f=inp?.files?.[0];if(!f)return;const alvo=document.getElementById('compraFoto');try{const dt=new DataTransfer();dt.items.add(f);alvo.files=dt.files}catch(e){}if(f.type.startsWith('image/'))preverFoto(inp,'compraPreview');else{const im=document.getElementById('compraPreview');if(im)im.style.display='none'}const st=document.getElementById('compraStatus');if(st)st.textContent='Arquivo selecionado: '+f.name+' • iniciando leitura…';lerCompraIA(f)}
+let compraEditandoId=null;
+function editarCompraCompleta(i){
+ const c=(state.compras||[])[i];if(!c)return alert('Compra não encontrada.');
+ go('compras');setTimeout(()=>{
+  compraEditandoId=c.id;
+  mostrarCompraIA({numero_nota:c.nota,serie:c.serie,data_emissao:c.data,fornecedor:c.fornecedor,cnpj_fornecedor:c.cnpjFornecedor,produtos:(c.itens||[]).map(x=>({descricao:x.produto,quantidade:x.quantidade,unidade:x.unidade,valor_unitario:x.valorUnit,valor_total:x.valorTotal,categoria:x.categoria,destino:x.destino}))});
+  const b=document.querySelector('#compraReview button[onclick="salvarCompra()"]');if(b)b.textContent='Salvar alterações nesta compra';
+  const titulo=document.querySelector('#compraReview b');if(titulo)titulo.textContent='Editar nota fiscal existente';
+ },180);
+}
 function novaCompraManual(){mostrarCompraIA({produtos:[{descricao:'',quantidade:'',unidade:'un',valor_unitario:'',valor_total:'',categoria:'Outros'}]});const st=document.getElementById('compraStatus');if(st)st.textContent='⌨️ Preenchimento manual. Complete os campos e salve.';salvarRascunhoCompra()}
 function compraDuplicada(nota,serie,cnpj){const n=chaveTexto(nota),s=chaveTexto(serie),c=chaveTexto(cnpj);return (state.compras||[]).some(x=>chaveTexto(x.nota)===n&&(!s||chaveTexto(x.serie)===s)&&(!c||chaveTexto(x.cnpjFornecedor)===c))}
 function lerArquivoDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Não consegui abrir o arquivo selecionado.'));r.readAsDataURL(file)})}
@@ -778,7 +810,33 @@ function recalcularItemCompra(row){
 }
 function addItemCompra(){document.getElementById('cpItens')?.insertAdjacentHTML('beforeend',itemCompraHTML());salvarRascunhoCompra()}
 async function salvarCompra(){
- state.compras=state.compras||[];state.estoque=state.estoque||[];state.custos=state.custos||[];const nota=cpNota.value.trim(),serie=cpSerie.value.trim(),fornecedor=cpFornecedor.value.trim(),cnpj=cpCnpj.value.trim(),data=cpData.value;if(nota&&compraDuplicada(nota,serie,cnpj)){alert('⚠️ Esta nota já está em Compras.');return}validarItensCompraIA();const criticos=[...document.querySelectorAll('#cpItens .notaItem')].filter(r=>r.dataset.conferenciaCritica==='1');if(criticos.length&&!confirm('⚠️ Há '+criticos.length+' item(ns) com valores que precisam de conferência.\n\nDeseja salvar mesmo assim?'))return;const compraId='cmp_'+Date.now(),itens=[];let total=0,itemSeq=0;for(const row of document.querySelectorAll('#cpItens .notaItem')){const g=k=>row.querySelector(`[data-k="${k}"]`)?.value||'';const produtoRef=resolverProduto(g('produto')),produto=produtoRef.nome,q=numeroIA(g('quantidade'))||0,vu=numeroIA(g('valorUnit'))||0;let vt=numeroIA(g('valorTotal'))||0;if(!vt&&q&&vu)vt=q*vu;if(!produto)continue;const itemId=compraId+'_item_'+(++itemSeq),it={id:itemId,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,quantidade:q,unidade:g('unidade'),valorUnit:q?vt/q:vu,valorTotal:vt,categoria:g('categoria'),destino:g('destino')};itens.push(it);total+=vt;if(it.destino==='estoque'||it.destino==='diesel')state.estoque.push({id:'est_'+Date.now()+'_'+itemSeq,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,categoria:it.categoria,quantidade:q,unidade:it.unidade,valor:vt,nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:itemId});else if(it.destino==='custo')state.custos.push({data,descricao:produto,categoria:it.categoria,valor:vt,safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:itemId})}if(!itens.length){alert('Nenhum item para salvar.');return}state.compras.push({id:compraId,nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});await salvarEstado();apagarRascunhoCompra();alert('Compra salva e itens enviados aos destinos escolhidos.');go('compras')}
+ state.compras=state.compras||[];state.estoque=state.estoque||[];state.custos=state.custos||[];const nota=cpNota.value.trim(),serie=cpSerie.value.trim(),fornecedor=cpFornecedor.value.trim(),cnpj=cpCnpj.value.trim(),data=cpData.value;if(nota&&(state.compras||[]).some(x=>x.id!==compraEditandoId&&chaveTexto(x.nota)===chaveTexto(nota)&&(!serie||chaveTexto(x.serie)===chaveTexto(serie))&&(!cnpj||chaveTexto(x.cnpjFornecedor)===chaveTexto(cnpj)))){alert('⚠️ Esta nota já está em Compras.');return}validarItensCompraIA();const criticos=[...document.querySelectorAll('#cpItens .notaItem')].filter(r=>r.dataset.conferenciaCritica==='1');if(criticos.length&&!confirm('⚠️ Há '+criticos.length+' item(ns) com valores que precisam de conferência.\n\nDeseja salvar mesmo assim?'))return;const compraAnterior=compraEditandoId?(state.compras||[]).find(c=>c.id===compraEditandoId):null,compraId=compraAnterior?.id||('cmp_'+Date.now()),itens=[];let total=0,itemSeq=0;for(const row of document.querySelectorAll('#cpItens .notaItem')){const g=k=>row.querySelector(`[data-k="${k}"]`)?.value||'';const produtoRef=resolverProduto(g('produto')),produto=produtoRef.nome,q=numeroIA(g('quantidade'))||0,vu=numeroIA(g('valorUnit'))||0;let vt=numeroIA(g('valorTotal'))||0;if(!vt&&q&&vu)vt=q*vu;if(!produto)continue;const itemId=compraAnterior?.itens?.[itemSeq]?.id||(compraId+'_item_'+(itemSeq+1));itemSeq++;const it={id:itemId,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,quantidade:q,unidade:g('unidade'),valorUnit:q?vt/q:vu,valorTotal:vt,categoria:g('categoria'),destino:g('destino')};itens.push(it);total+=vt;if(!compraAnterior&&(it.destino==='estoque'||it.destino==='diesel'))state.estoque.push({id:'est_'+Date.now()+'_'+itemSeq,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,categoria:it.categoria,quantidade:q,unidade:it.unidade,valor:vt,nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:itemId});else if(!compraAnterior&&it.destino==='custo')state.custos.push({data,descricao:produto,categoria:it.categoria,valor:vt,safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:itemId})}if(!itens.length){alert('Nenhum item para salvar.');return}if(compraAnterior){
+ const anterior=JSON.stringify(state);
+ try{
+  if(itens.length!==compraAnterior.itens.length)throw new Error('Para evitar perda de vínculos, não é possível adicionar ou remover itens nesta edição.');
+  const alteracoes=[];
+  for(let j=0;j<itens.length;j++){
+   const novo=itens[j],velho=compraAnterior.itens[j];
+   if(novo.destino!==velho.destino)throw new Error('Não altere o destino de um item já lançado.');
+   const entradas=(state.estoque||[]).filter(e=>String(e.compraItemId||'')===String(velho.id));
+   const despesas=(state.custos||[]).filter(e=>String(e.compraItemId||'')===String(velho.id));
+   if(velho.destino==='estoque'||velho.destino==='diesel'){
+    if(entradas.length!==1)throw new Error('Não foi possível identificar uma única entrada de estoque para '+velho.produto+'.');
+    const e=entradas[0],consumido=Number(velho.quantidade||0)-Number(e.quantidade||0);
+    if(novo.unidade!==velho.unidade&&consumido>0.00001)throw new Error('Não altere a unidade de '+velho.produto+' após consumo.');
+    if(Number(novo.quantidade)<consumido-0.00001)throw new Error('A quantidade de '+velho.produto+' não pode ser menor que o já consumido ('+consumido+').');
+    if((chaveTexto(novo.produto)!==chaveTexto(velho.produto)||novo.unidade!==velho.unidade)&&consumido>0.00001)throw new Error('Produto consumido não pode mudar de nome ou unidade: '+velho.produto);
+    alteracoes.push(()=>{Object.assign(e,{produto:novo.produto,produtoId:novo.produtoId,produtoChave:novo.produtoChave,categoria:novo.categoria,quantidade:Number(novo.quantidade)-consumido,unidade:novo.unidade,valor:Number(e.valor||0)+Number(novo.valorTotal||0)-Number(velho.valorTotal||0),nota,fornecedor,dataNota:data});});
+   }else if(velho.destino==='custo'){
+    if(despesas.length!==1)throw new Error('Custo da compra não encontrado para '+velho.produto);
+    alteracoes.push(()=>Object.assign(despesas[0],{descricao:novo.produto,categoria:novo.categoria,valor:novo.valorTotal,fornecedor,nota,data}));
+   }
+  }
+  alteracoes.forEach(f=>f());Object.assign(compraAnterior,{nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});
+  await salvarEstado();compraEditandoId=null;apagarRascunhoCompra();alert('Nota atualizada sem duplicar a compra.');go('compras');return;
+ }catch(e){state=JSON.parse(anterior);saveLocal();alert('Alteração não aplicada: '+e.message);return;}
+}
+state.compras.push({id:compraId,nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total});await salvarEstado();apagarRascunhoCompra();alert('Compra salva e itens enviados aos destinos escolhidos.');go('compras')}
 
 function estoque(){state.estoque=state.estoque||[];let rows=state.estoque.map((x,i)=>`<tr><td>${esc(x.produto)}</td><td>${esc(x.categoria||"-")}</td><td>${esc(x.quantidade)} ${esc(x.unidade)}</td><td>${Number.isFinite(Number(x.valor))&&Number(x.valor)>0?"R$ "+Number(x.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})+`<div class="muted">${Number(x.quantidade||0)>0?'R$ '+(Number(x.valor)/Number(x.quantidade)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})+'/'+esc(x.unidade||'un'):''}</div>`:"-"}</td><td><button class="secondary" onclick="movEstoque(${i})">Movimentar</button> <button class="secondary" onclick="editarEstoque(${i})">Editar</button> <button class="danger" onclick="excluirEstoque(${i})">Excluir</button></td></tr>`).join("");return listPage("estoque","Estoque","Produtos e insumos disponíveis na fazenda.","+ Novo Produto",`<form onsubmit="addEstoque(event)"><div class="form"><div class="field"><label>Produto *</label><input id="eproduto" required onblur="padronizarCampoProduto(this)"></div><div class="field"><label>Categoria</label><select id="ecategoria"><option>Herbicida</option><option>Fungicida</option><option>Inseticida</option><option>Acaricida</option><option>Nematicida</option><option>Adjuvante</option><option>Biológico</option><option>Fertilizante</option><option>Semente</option><option>Outro</option></select></div><div class="field"><label>Quantidade *</label><input id="eqtd" type="number" step="0.01" required></div><div class="field"><label>Unidade</label><select id="eunidade"><option>L</option><option>kg</option><option>un</option><option>sacas</option></select></div><div class="field"><label>Valor total (R$)</label><input id="evalor" type="number" step="0.01"></div><div class="field"><label>Nº da nota</label><input id="enota"></div><div class="field"><label>Lote</label><input id="elote"></div><div class="field full"><label>Foto da nota</label>
 <div class="cameraBox"><input id="efoto" type="file" accept="image/*" capture="environment" onchange="preverFoto(this,'epreview')">
@@ -1208,10 +1266,14 @@ function relatoriosPage(){
  const compras=(state.compras||[]).filter(x=>ft(x)&&confereEspecificacao(x,'compras')), custos=(state.custos||[]).filter(x=>ft(x)&&confereEspecificacao(x,'custos')), vendas=(state.vendas||[]).filter(x=>ft(x)&&confereEspecificacao(x,'vendas')), aplic=(state.aplicacoes||[]).filter(x=>ft(x)&&confereEspecificacao(x,'aplicacoes')), plant=(state.plantios||state.plantio||[]).filter(x=>ft(x)&&confereEspecificacao(x,'plantio')), rom=(state.romaneios||[]).filter(x=>ft(x)&&confereEspecificacao(x,'romaneios')), diesel=[...(state.diesel||[]),...(state.dieselCaminhoes||[])].filter(x=>ft(x)&&confereEspecificacao(x,'diesel')), estoque=(state.estoque||[]).filter(x=>periodo(x)&&confereEspecificacao(x,'estoque'));
  const despCompras=compras.reduce((a,x)=>a+Number(x.valorTotal||0),0), despOutros=custos.filter(c=>c.origem!=='compras').reduce((a,x)=>a+Number(x.valor||0),0), receita=vendas.reduce((a,x)=>a+Number(x.valorTotal||0),0), desp=despCompras+despOutros;
  const tratamentos=(state.tratamentosSementes||[]).filter(x=>ft(x)&&confereEspecificacao(x,'tratamentos'));
- const tipos=[['resumo','Resumo financeiro'],['estoque','Estoque'],['compras','Compras / Notas'],['aplicacoes','Aplicações'],['diesel','Diesel / Abastecimentos'],['custos','Custos'],['plantio','Plantio'],['tratamentos','Tratamento de Sementes'],['romaneios','Colheita / Romaneios'],['vendas','Vendas'],['maquinas','Máquinas']];
+ const tipos=[['resumo','Resumo financeiro'],['estoque','Estoque'],['compras','Compras / Notas'],['aplicacoes','Aplicações'],['diesel','Diesel / Abastecimentos'],['custos','Custos'],['plantio','Plantio'],['tratamentos','Tratamento de Sementes'],['romaneios','Colheita / Romaneios'],['vendas','Vendas'],['maquinas','Máquinas'],['historicoEstoque','Movimentações do Estoque']];
  const tabela=(cab,linhas)=>`<div class="panel" style="overflow:auto"><table><thead><tr>${cab.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${linhas||`<tr><td colspan="${cab.length}" class="muted">Nenhum lançamento encontrado com estes filtros.</td></tr>`}</tbody></table></div>`;
  let corpo='';
- if(tipo==='estoque'){
+ if(tipo==='historicoEstoque'){
+  const movs=(state.historicoEstoque||[]).filter(x=>(!ini||String(x.data||'').slice(0,10)>=ini)&&(!fim||String(x.data||'').slice(0,10)<=fim)&&(!buscaSel||chaveTexto(JSON.stringify(x)).includes(chaveTexto(buscaSel)))&&(!produtoSel||chaveTexto(x.produto)===chaveTexto(produtoSel)));
+  corpo='<div class="panel"><b>Histórico de movimentações do estoque</b><p class="muted">Registra diferenças de quantidade a partir desta versão. Registros antigos não podem ser reconstruídos automaticamente. O tipo exato da operação pode não ser identificável; confira a descrição.</p></div>'+tabela(['Data / hora','Produto','Lote','Movimentação','Saldo anterior','Saldo atual','Tipo'],[...movs].reverse().map(x=>`<tr><td>${esc(new Date(x.data).toLocaleString('pt-BR'))}</td><td>${esc(x.produto)}</td><td>${esc(x.lote||'-')}</td><td>${Number(x.quantidade)>0?'+':''}${Number(x.quantidade).toLocaleString('pt-BR',{maximumFractionDigits:4})} ${esc(x.unidade)}</td><td>${Number(x.saldoAnterior).toLocaleString('pt-BR')} ${esc(x.unidade)}</td><td>${Number(x.saldoAtual).toLocaleString('pt-BR')} ${esc(x.unidade)}</td><td>${esc(x.origem)}</td></tr>`).join(''));
+ }
+ else if(tipo==='estoque'){
    const todosEstoque=(state.estoque||[]).filter(x=>periodo(x)&&confere(x)&&confereEspecificacao(x,'estoque'));
    const categorias=[...new Set(todosEstoque.map(x=>String(x.categoria||'Sem categoria').trim()||'Sem categoria'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
    const porCategoria=categoriaSel?todosEstoque.filter(x=>chaveTexto(x.categoria||'Sem categoria')===chaveTexto(categoriaSel)):todosEstoque;
@@ -1327,28 +1389,38 @@ async function addCusto(e){
  }
  try{await salvarEstado();go("custos")}catch(erro){alert("Erro ao sincronizar despesa: "+erro.message)}
 }
+function estoqueRelacionadoEmUso(item){
+ const chave=chaveProduto(item.produto||'');
+ const algum=(arr,pred)=>(arr||[]).some(pred);
+ const aplic=algum(state.aplicacoes,a=>(a.produtos||[]).some(p=>(p.baixasEstoque||[]).some(b=>String(b.estoqueId||'')===String(item.id||'')&&!!item.id)||chaveProduto(p.produto)===chave));
+ const tratamentos=algum(state.tratamentosSementes,t=>String(t.sementeEstoqueId||'')===String(item.id||'')&&!!item.id||chaveProduto(t.semente)===chave||(t.produtos||[]).some(p=>String(p.estoqueId||'')===String(item.id||'')&&!!item.id||chaveProduto(p.produto)===chave));
+ return aplic||tratamentos;
+}
 async function excluirEstoque(i){
-  state.estoque=state.estoque||[];state.compras=state.compras||[];
-  const item=state.estoque[i];if(!item){alert('Não encontrei este lançamento no estoque.');return;}
-  if(!confirm(`Excluir ${item.produto||'este item'} do estoque?`))return;
-  try{
-    marcarExcluido('estoque',item);state.estoque.splice(i,1);
-    if(item.compraId&&item.compraItemId){const compra=state.compras.find(c=>c.id===item.compraId);const ci=compra?.itens?.find(x=>x.id===item.compraItemId);if(compra&&ci&&confirm('Este item veio de uma compra. Deseja remover também este item da nota em Compras?')){compra.itens=compra.itens.filter(x=>x.id!==item.compraItemId);compra.valorTotal=compra.itens.reduce((a,x)=>a+Number(x.valorTotal||0),0);if(!compra.itens.length){marcarExcluido('compras',compra);state.compras=state.compras.filter(c=>c!==compra);}}}
-    await salvarEstado();render();
-  }catch(erro){alert('Erro ao excluir do estoque: '+erro.message);}
+ const item=(state.estoque||[])[i];if(!item)return alert('Item de estoque não encontrado.');
+ if(estoqueRelacionadoEmUso(item))return alert('Este produto tem vínculo com aplicações ou tratamentos. Não pode ser excluído diretamente. Revise os lançamentos antes.');
+ if(item.compraId)return alert('Este item foi lançado por Compras. Para manter a nota e o estoque consistentes, faça a correção em Compras.');
+ if(!confirm('Excluir a entrada de estoque '+(item.produto||'')+'?'))return;
+ const anterior=JSON.stringify(state);
+ try{marcarExcluido('estoque',item);state.estoque.splice(i,1);await salvarEstado();render()}
+ catch(e){state=JSON.parse(anterior);saveLocal();alert('Exclusão desfeita: '+e.message)}
 }
 async function excluirCompra(i){
- state.compras=state.compras||[];state.estoque=state.estoque||[];const compra=state.compras[i];if(!compra){alert('Não encontrei esta compra.');return;}
- if(!confirm(`Excluir a nota ${compra.nota||''} de Compras?`))return;
- try{
-   const relacionados=state.estoque.filter(e=>e.compraId&&e.compraId===compra.id);
-   if(relacionados.length&&confirm(`Esta compra possui ${relacionados.length} item(ns) no estoque. Deseja excluir também esses lançamentos do estoque?`)){for(const e of relacionados)marcarExcluido('estoque',e);state.estoque=state.estoque.filter(e=>!(e.compraId&&e.compraId===compra.id));}
-   marcarExcluido('compras',compra);state.compras.splice(i,1);await salvarEstado();render();
- }catch(erro){alert('Erro ao excluir compra: '+erro.message);}
+ const compra=(state.compras||[])[i];if(!compra)return alert('Compra não encontrada.');
+ const relacionados=(state.estoque||[]).filter(e=>String(e.compraId||'')===String(compra.id||'')&&!!compra.id);
+ if(relacionados.some(estoqueRelacionadoEmUso))return alert('Esta compra possui produtos vinculados a aplicações ou tratamentos. Não é seguro excluí-la. Corrija os consumos primeiro.');
+ if(relacionados.some(e=>Number(e.quantidade||0)<0))return alert('Existe saldo negativo de produto desta compra. Verifique o estoque antes de excluir.');
+ if(!confirm('Excluir a compra '+(compra.nota||'')+(relacionados.length?' e suas '+relacionados.length+' entradas de estoque ainda não utilizadas?':'?')))return;
+ const anterior=JSON.stringify(state);
+ try{for(const e of relacionados)marcarExcluido('estoque',e);state.estoque=(state.estoque||[]).filter(e=>!relacionados.includes(e));marcarExcluido('compras',compra);state.compras.splice(i,1);await salvarEstado();render()}
+ catch(e){state=JSON.parse(anterior);saveLocal();alert('Exclusão desfeita: '+e.message)}
 }
 
 async function del(type,i){
-  if(!confirm("Excluir este registro?")) return;
+  const registro=state[type]?.[i];
+  if(!registro)return alert('Registro não encontrado.');
+  if(!confirm('Excluir este registro?'))return;
+  const estadoAnterior=JSON.stringify(state);
   try {
     if(type === "fazendas"){
       const item = state.fazendas[i];
@@ -1358,6 +1430,28 @@ async function del(type,i){
       render();
       return;
     }
+    if(type==='plantio'){
+      const p=registro;
+      if(p.tratamentoId&&Number(p.quantidadeTotal||p.qtdSemente||0)>0){
+        const tr=(state.tratamentosSementes||[]).find(x=>String(x.id)===String(p.tratamentoId));
+        if(!tr)throw new Error('Tratamento original não encontrado. Plantio preservado para evitar perda de saldo.');
+        const q=Number(p.quantidadeTotal||p.qtdSemente||0);
+        if(!Number.isFinite(q)||q<0)throw new Error('Quantidade de semente inválida.');
+        const novo=Number(tr.saldo||0)+q;
+        if(novo>Number(tr.quantidade||0)+.0001)throw new Error('Devolução ultrapassaria a quantidade tratada. Revise antes de excluir.');
+        tr.saldo=novo;
+      }
+      state.custos=(state.custos||[]).filter(c=>String(c.plantioId||'')!==String(p.id||'')&&c.id!=='custo_'+p.id);
+    }
+    if(type==='caminhoes'){
+      if((state.diesel||[]).some(x=>String(x.caminhaoId||'')===String(registro.id||''))||(state.dieselCaminhoes||[]).some(x=>String(x.caminhaoId||'')===String(registro.id||'')))throw new Error('Caminhão tem abastecimentos vinculados. Não exclua antes de revisar esses registros.');
+    }
+    if(type==='diesel'){
+      // Abastecimentos deste módulo não efetuam baixa automática no estoque.
+      // Não criar devolução fictícia sem uma movimentação de origem registrada.
+      if(registro.estoqueId||registro.baixaEstoqueId)throw new Error('Abastecimento vinculado ao estoque. Exclusão bloqueada até identificar a movimentação original.');
+    }
+    if(type==='custos'&&(registro.plantioId||registro.aplicacaoId||registro.compraId||registro.tratamentoId))throw new Error('Custo vinculado a outro lançamento. Exclua ou corrija o lançamento de origem.');
     if(type==="tratamentosSementes"){
       const tr=state.tratamentosSementes?.[i];
       if(!tr)throw new Error('Tratamento não encontrado.');
@@ -1408,7 +1502,8 @@ async function del(type,i){
     render();
     if(type==="aplicacoes"||type==="tratamentosSementes")alert("Registro excluído e produtos devolvidos ao estoque. Confira os saldos.");
   } catch(erro){
-    alert("Erro ao excluir: " + erro.message);
+    state=JSON.parse(estadoAnterior);saveLocal();
+    alert("Exclusão cancelada: " + erro.message);
   }
 }
 
