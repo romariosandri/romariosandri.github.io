@@ -1390,7 +1390,7 @@ function relatoriosPage(){
 }
 function salvarRascunhoPagina(){
  const page=location.hash.slice(1)||'inicio';if(['inicio','compras','relatorios','mapas'].includes(page))return;const app=document.getElementById('app');if(!app)return;const vals={};
- app.querySelectorAll('input[id],select[id],textarea[id]').forEach(e=>{if(e.type==='file'||e.id==='tseditid')return;vals[e.id]=e.type==='checkbox'?e.checked:e.value});
+ app.querySelectorAll('input[id],select[id],textarea[id]').forEach(e=>{if(e.type==='file'||e.id==='tseditid'||e.id==='plantioEditId'||e.id==='plantioEditIndex')return;vals[e.id]=e.type==='checkbox'?e.checked:e.value});
  const extra={};
  if(page==='aplicacoes'){const painel=document.getElementById('aplicacoesForm');if(!painel||painel.style.display==='none')return;extra.formAberto=true;}
  if(page==='aplicacoes'){extra.talhoes=[...document.querySelectorAll('.atalhaoMulti:checked')].map(e=>e.value);extra.produtos=[...document.querySelectorAll('.produtoLinha')].map(l=>({bonificada:l.dataset.bonificada==='1',produto:l.querySelector('.aprProduto')?.value||'',nome:l.querySelector('.aprNomeBonificado')?.value||'',unidade:l.querySelector('.aprUnidadeBonificado')?.value||'',dose:l.querySelector('.aprDose')?.value||'',unidadeDose:l.querySelector('.aprUnidadeDose')?.value||''}))}
@@ -1401,7 +1401,7 @@ function restaurarRascunhoPagina(page){
  let d;try{d=JSON.parse(localStorage.getItem('ts_draft_'+page)||'null')}catch(e){}if(!d)return;
  if(page==='aplicacoes'&&d.extra){const painel=document.getElementById('aplicacoesForm');if(painel&&d.extra.formAberto)painel.style.display='block';for(const nome of (d.extra.talhoes||[])){const el=[...document.querySelectorAll('.atalhaoMulti')].find(x=>x.value===nome);if(el)el.checked=true}for(const p of (d.extra.produtos||[])){if(p.bonificada)addLinhaProdutoBonificado();else addLinhaProduto();const l=[...document.querySelectorAll('.produtoLinha')].pop();if(l){const pr=l.querySelector('.aprProduto'),nm=l.querySelector('.aprNomeBonificado'),un=l.querySelector('.aprUnidadeBonificado'),ds=l.querySelector('.aprDose');if(pr){pr.value=p.produto;if(pr.value!=='')atualizarUnidadeDoseLinha(pr)}if(nm)nm.value=p.nome||'';if(un&&p.unidade)un.value=p.unidade;if(ds)ds.value=p.dose;const ud=l.querySelector('.aprUnidadeDose');if(ud&&p.unidadeDose)ud.value=p.unidadeDose}}previewAplicacao()}
  if(page==='tratamentoSementes'&&d.extra){for(const p of (d.extra.produtos||[])){addLinhaTratamento();const l=[...document.querySelectorAll('.tsLinha')].pop();if(l){const pr=l.querySelector('.tsProduto'),ds=l.querySelector('.tsDose');if(pr)pr.value=p.produto;if(ds)ds.value=p.dose}}}
- for(const [id,v] of Object.entries(d.vals||{})){const el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v}}
+ for(const [id,v] of Object.entries(d.vals||{})){if(page==='plantio'&&(id==='plantioEditId'||id==='plantioEditIndex'))continue;const el=document.getElementById(id);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=v}}
  setTimeout(()=>{if(page==='aplicacoes')previewAplicacao();if(page==='tratamentoSementes')previewTratamento();if(page==='plantio')previewCustoPlantio();if(page==='diesel'){trocaTipoDiesel();calcDiesel()}window.scrollTo(0,d.scrollY||0)},40)
 }
 function limparRascunhoPagina(page){try{localStorage.removeItem('ts_draft_'+page)}catch(e){}}
@@ -1490,7 +1490,7 @@ function editarPlantioCompleto(i){
  box.style.display='block';
  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v??''};
  if(!x.id){alert('Este plantio antigo não possui identificador. A edição foi bloqueada para evitar duplicar o lançamento.');return;}
- set('plantioEditId',x.id);set('plantioEditIndex',i);set('pdata',x.data);set('ptalhao',x.talhao);
+ document.getElementById('plantioForm').dataset.editando='1';set('plantioEditId',x.id);set('plantioEditIndex',i);set('pdata',x.data);set('ptalhao',x.talhao);
  set('parea',x.areaPlantada||x.areaTalhao||'');set('pcultura',x.cultura);
  set('pvar',x.variedade);set('ppop',x.populacao);set('psafra',x.safra);
  document.getElementById('plantioLotesLista').innerHTML='';for(const l of lotesDoPlantio(x))adicionarLotePlantio(l.tratamentoId,l.quantidade);if(!lotesDoPlantio(x).length)adicionarLotePlantio();
@@ -1498,7 +1498,7 @@ function editarPlantioCompleto(i){
  const c=document.getElementById('plantioCancelarBtn');if(c)c.style.display='inline-block';
  previewCustoPlantio();box.scrollIntoView({behavior:'smooth',block:'start'});
 }
-function cancelarEdicaoPlantio(){window.plantioTratamentoEditando='';render()}
+function cancelarEdicaoPlantio(){window.plantioTratamentoEditando='';const f=document.getElementById('plantioForm');if(f)delete f.dataset.editando;limparRascunhoPagina('plantio');render()}
 async function atualizarPlantioExistente(){
  const id=document.getElementById('plantioEditId')?.value;const i=(state.plantio||[]).findIndex(p=>String(p.id)===String(id));if(!id||i<0){alert('Plantio original não encontrado. Nada foi alterado.');return}
  const antigo=state.plantio[i],talhaoNome=document.getElementById('ptalhao').value,safra=document.getElementById('psafra').value;
@@ -1542,9 +1542,9 @@ async function salvarPlantioComFeedback(){
  if(botao){botao.disabled=true;botao.textContent='Salvando plantio...';}
  try{await addPlantio({preventDefault(){}})}
  catch(err){console.error('Erro ao salvar plantio',err);alert('Não foi possível salvar o plantio: '+(err?.message||String(err)));}
- finally{const b=document.getElementById('plantioSalvarBtn');if(b){b.disabled=false;b.textContent=document.getElementById('plantioEditId')?.value?'Salvar alterações neste plantio':'Salvar plantio';}}
+ finally{const b=document.getElementById('plantioSalvarBtn');if(b){b.disabled=false;b.textContent=document.getElementById('plantioForm')?.dataset.editando==='1'?'Salvar alterações neste plantio':'Salvar plantio';}}
 }
-async function addPlantio(e){e.preventDefault();if(document.getElementById('plantioEditId')?.value){await atualizarPlantioExistente();return}
+async function addPlantio(e){e.preventDefault();const formPlantio=document.getElementById('plantioForm');if(formPlantio?.dataset.editando==='1'&&document.getElementById('plantioEditId')?.value){await atualizarPlantioExistente();return}if(document.getElementById('plantioEditId'))document.getElementById('plantioEditId').value='';if(document.getElementById('plantioEditIndex'))document.getElementById('plantioEditIndex').value='';
  state.plantio=state.plantio||[];state.custos=state.custos||[];state.tratamentosSementes=state.tratamentosSementes||[];
  const talhaoNome=document.getElementById('ptalhao').value,talhao=(state.talhoes||[]).find(t=>t.nome===talhaoNome),area=Number(document.getElementById('parea').value),safra=document.getElementById('psafra').value||safraAtivaNome();
  if(!talhao||!(area>0)){alert('Selecione um talhão e uma área válida.');return}
