@@ -1528,8 +1528,8 @@ async function addTalhao(e){
     go('talhoes');
   }
 }
-async // Edição segura: reverte baixas documentadas e recria os vínculos apenas após validar.
-function editarAplicacaoCompleta(i){
+// Edição segura: reverte baixas documentadas e recria os vínculos apenas após validar.
+async function editarAplicacaoCompleta(i){
  const a=(state.aplicacoes||[])[i];if(!a)return alert('Aplicação não encontrada.');
  const grupo=a.grupoAplicacao;
  const registros=grupo?state.aplicacoes.filter(x=>x.grupoAplicacao===grupo):[a];
