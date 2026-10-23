@@ -280,6 +280,26 @@ table{width:100%;border-collapse:collapse;margin-top:12px}th,td{text-align:left;
 <main id="app"></main>
 </div>
 <script>
+(function(){
+ var concluido=false;
+ function painel(msg){
+  var el=document.getElementById('tsDiagnosticoInicial');
+  if(!el){el=document.createElement('section');el.id='tsDiagnosticoInicial';el.style.cssText='position:relative;z-index:9999;margin:16px;padding:18px;border:2px solid #c77;background:#fff;color:#222;border-radius:12px;font:15px Arial,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere';(document.getElementById('app')||document.body).prepend(el)}
+  el.textContent='Terra Santa — diagnóstico de abertura\n\n'+msg+'\n\nNenhum dado foi apagado. Não limpe os dados do Safari.';
+ }
+ window.addEventListener('error',function(e){painel('Erro: '+(e.message||'desconhecido')+'\nLinha: '+(e.lineno||'?')+' Coluna: '+(e.colno||'?'))});
+ window.addEventListener('unhandledrejection',function(e){painel('Erro assíncrono: '+String(e.reason&&e.reason.message||e.reason))});
+ document.addEventListener('DOMContentLoaded',function(){
+  setTimeout(function(){
+   var menu=document.getElementById('menu'),app=document.getElementById('app');
+   var semMenu=!menu||getComputedStyle(menu).display==='none';
+   var semConteudo=!app||!app.textContent.trim();
+   if(semMenu||semConteudo) painel('A inicialização não concluiu. Menu oculto: '+semMenu+'; conteúdo vazio: '+semConteudo+'.\nAguarde a mensagem de erro ou envie uma foto desta tela.');
+  },3500);
+ });
+})();
+</script>
+<script>
 const SUPABASE_URL = 'https://tzlirbhljgqujrvgptfs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_tkrE_2Tg8KY0JmGAbxshXg_SxlRepgM';
 let authSession=null;
@@ -347,7 +367,8 @@ function mostrarErroInicialTerraSanta(erro){
 const modules=[
 ["inicio","🏠","Início"],["fazendas","🏡","Fazendas"],["talhoes","🌱","Talhões"],["safras","📅","Safras"],["aplicacoes","💧","Aplicações"],["plantio","🌾","Plantio"],["tratamentoSementes","🧪","Trat. Sementes"],["maquinas","🚜","Máquinas"],["caminhoes","🚛","Caminhões"],["manutencao","🔧","Manutenção"],["diesel","⛽","Diesel"],["compras","🛒","Compras"],["titulares","👤","CPF / IE"],["estoque","📦","Estoque"],["custos","💰","Custos"],["colheita","🌽","Colheita"],["romaneios","🚛","Romaneios"],["vendas","💵","Vendas"],["pluviometria","🌧️","Pluviometria"],["mapas","🗺️","Mapas"],["relatorios","📊","Relatórios"]
 ];
-let state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');
+let state;
+try{state=JSON.parse(localStorage.getItem("terraSanta")||'{"fazendas":[],"talhoes":[],"safras":[],"aplicacoes":[]}');if(!state||typeof state!=="object")throw Error('Estado local inválido')}catch(e){console.error('Dados locais não puderam ser lidos; cópia original preservada.',e);state={fazendas:[],talhoes:[],safras:[],aplicacoes:[]};setTimeout(()=>{const el=document.getElementById('tsDiagnosticoInicial');if(el)el.textContent='Atenção: dados locais não puderam ser lidos. Não faça lançamentos nem limpe o Safari. Envie esta mensagem. '+e.message},0)}
 function saveLocal(){localStorage.setItem("terraSanta",JSON.stringify(state))}
 function temSyncPendente(){return localStorage.getItem("terraSantaSyncPendente")==="1"}
 function marcarSyncPendente(v=true){if(v)localStorage.setItem("terraSantaSyncPendente","1");else localStorage.removeItem("terraSantaSyncPendente");atualizarStatusSync()}
