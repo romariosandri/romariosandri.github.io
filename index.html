@@ -1817,21 +1817,30 @@ async function del(type,i){
         throw new Error('Tratamento já utilizado no plantio. Exclua ou corrija os plantios vinculados antes de devolver a semente.');
       const movimentos=[{produto:tr.semente,lote:tr.lote||'',unidade:tr.unidadeEstoqueSemente||'',quantidade:Number(tr.baixaSemente??tr.quantidade??0),custo:Number(tr.custoSemente||0),estoqueId:tr.sementeEstoqueId},...(tr.produtos||[]).map(x=>({produto:x.produto,lote:x.lote||'',unidade:x.unidade||'',quantidade:Number(x.quantidade||0),custo:Number(x.custo||0),estoqueId:x.estoqueId}))];
       const devolucoes=[];
-      for(const m of movimentos){
+      for(let mi=0;mi<movimentos.length;mi++){
+        const m=movimentos[mi];
         if(!Number.isFinite(m.quantidade)||m.quantidade<0)throw new Error('Quantidade inválida: '+m.produto);
         if(m.quantidade===0)continue;
         const itens=state.estoque||[];
         let item=m.estoqueId?itens.find(x=>String(x.id)===String(m.estoqueId)):null;
         if(!item)item=itens.find(x=>chaveTexto(x.produto)===chaveTexto(m.produto)&&(!m.lote||chaveTexto(x.lote)===chaveTexto(m.lote))&&(!m.unidade||String(x.unidade||'').toLowerCase()===String(m.unidade).toLowerCase()));
-        if(!item)throw new Error('Não encontrei o produto/lote original no estoque: '+m.produto+(m.lote?' (lote '+m.lote+')':'')+'. Tratamento não excluído.');
         let qtd=m.quantidade;
-        if(m.unidade&&String(item.unidade||'').toLowerCase()!==String(m.unidade).toLowerCase()){
+        if(item&&m.unidade&&String(item.unidade||'').toLowerCase()!==String(m.unidade).toLowerCase()){
           qtd=converterUnidade(m.quantidade,m.unidade,item.unidade);
           if(qtd==null||!Number.isFinite(qtd))throw new Error('Unidade incompatível para '+m.produto+'. Tratamento não excluído.');
         }
-        devolucoes.push({item,qtd,custo:m.custo});
+        // Se a entrada original foi removida/renomeada, não devolva em outro lote:
+        // crie uma entrada identificada de devolução com os dados gravados no tratamento.
+        if(!item){
+          item={id:'est_dev_ts_'+String(tr.id||Date.now())+'_'+mi,produto:m.produto,categoria:'Insumo',quantidade:0,unidade:m.unidade||'',valor:0,nota:'',lote:m.lote||'',origem:'devolucao_tratamento',observacao:'Devolução gerada ao excluir tratamento de sementes '+String(tr.nome||tr.id||'')};
+          devolucoes.push({item,qtd,custo:m.custo,novo:true});
+        }else devolucoes.push({item,qtd,custo:m.custo,novo:false});
       }
-      for(const d of devolucoes){d.item.quantidade=Number(d.item.quantidade||0)+d.qtd;d.item.valor=Number(d.item.valor||0)+d.custo;}
+      for(const d of devolucoes){
+        if(d.novo)state.estoque.push(d.item);
+        d.item.quantidade=Number(d.item.quantidade||0)+d.qtd;
+        d.item.valor=Number(d.item.valor||0)+d.custo;
+      }
     }
     if(type==="aplicacoes"){
       const a=state.aplicacoes?.[i];if(!a)throw new Error('Aplicação não encontrada.');
