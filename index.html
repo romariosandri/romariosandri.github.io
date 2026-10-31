@@ -876,11 +876,11 @@ async function salvarCompra(){
  state.compras=state.compras||[];state.estoque=state.estoque||[];state.custos=state.custos||[];const nota=cpNota.value.trim(),serie=cpSerie.value.trim(),fornecedor=cpFornecedor.value.trim(),cnpj=cpCnpj.value.trim(),data=cpData.value,titularId=document.getElementById('cpTitular')?.value||'';if(nota&&(state.compras||[]).some(x=>x.id!==compraEditandoId&&chaveTexto(x.nota)===chaveTexto(nota)&&(!serie||chaveTexto(x.serie)===chaveTexto(serie))&&(!cnpj||chaveTexto(x.cnpjFornecedor)===chaveTexto(cnpj)))){alert('⚠️ Esta nota já está em Compras.');return}validarItensCompraIA();const criticos=[...document.querySelectorAll('#cpItens .notaItem')].filter(r=>r.dataset.conferenciaCritica==='1');if(criticos.length&&!confirm('⚠️ Há '+criticos.length+' item(ns) com valores que precisam de conferência.\n\nDeseja salvar mesmo assim?'))return;const compraAnterior=compraEditandoId?(state.compras||[]).find(c=>c.id===compraEditandoId):null,compraId=compraAnterior?.id||('cmp_'+Date.now()),itens=[];let total=0,itemSeq=0;for(const row of document.querySelectorAll('#cpItens .notaItem')){const g=k=>row.querySelector(`[data-k="${k}"]`)?.value||'';const produtoRef=resolverProduto(g('produto')),produto=produtoRef.nome,q=numeroIA(g('quantidade'))||0,vu=numeroIA(g('valorUnit'))||0;let vt=numeroIA(g('valorTotal'))||0;if(!vt&&q&&vu)vt=q*vu;if(!produto)continue;const itemId=compraAnterior?.itens?.[itemSeq]?.id||(compraId+'_item_'+(itemSeq+1));itemSeq++;const it={id:itemId,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,quantidade:q,unidade:g('unidade'),valorUnit:q?vt/q:vu,valorTotal:vt,categoria:g('categoria'),destino:g('destino')};itens.push(it);total+=vt;if(!compraAnterior&&(it.destino==='estoque'||it.destino==='diesel'))state.estoque.push({id:'est_'+Date.now()+'_'+itemSeq,produto,produtoId:produtoRef.id,produtoChave:produtoRef.chave,categoria:it.categoria,quantidade:q,unidade:it.unidade,valor:vt,nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:itemId});else if(!compraAnterior&&it.destino==='custo')state.custos.push({data,descricao:produto,categoria:it.categoria,valor:vt,safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:itemId})}if(!itens.length){alert('Nenhum item para salvar.');return}if(compraAnterior){
  const anterior=JSON.stringify(state);
  try{
-  if(itens.length!==(compraAnterior.itens||[]).length)throw new Error('Para evitar perda de vínculos, não é possível adicionar ou remover itens nesta edição.');
+  if(itens.length<(compraAnterior.itens||[]).length)throw new Error('Para excluir itens da nota, use a exclusão segura no estoque. A edição não permite remover linhas existentes.');
   const alteracoes=[];
   const avisos=[];
   const normalUnidade=u=>/^(beg|bag|bags)$/i.test(String(u||'').trim())?'bag':String(u||'').trim().toLowerCase();
-  for(let j=0;j<itens.length;j++){
+  for(let j=0;j<(compraAnterior.itens||[]).length;j++){
    const novo=itens[j],velho=compraAnterior.itens[j];
    if(novo.destino!==velho.destino)throw new Error('Não altere o destino de um item já lançado.');
    const entradas=(state.estoque||[]).filter(e=>String(e.compraItemId||'')===String(velho.id));
@@ -943,6 +943,15 @@ async function salvarCompra(){
     if(despesas.length!==1)throw new Error('Custo da compra não encontrado para '+velho.produto);
     alteracoes.push(()=>Object.assign(despesas[0],{descricao:novo.produto,categoria:novo.categoria,valor:novo.valorTotal,fornecedor,nota,data}));
    }
+  }
+  // Itens novos são acrescentados somente ao final, sem modificar os IDs dos anteriores.
+  for(let j=(compraAnterior.itens||[]).length;j<itens.length;j++){
+   const novo=itens[j];
+   if(!(Number(novo.quantidade)>0)||!(Number(novo.valorTotal)>=0))throw new Error('Confira a quantidade e o valor de '+novo.produto);
+   if((state.estoque||[]).some(e=>String(e.compraItemId||'')===String(novo.id))||(state.custos||[]).some(c=>String(c.compraItemId||'')===String(novo.id)))throw new Error('ID de item já utilizado: '+novo.produto);
+   if(novo.destino==='estoque'||novo.destino==='diesel')alteracoes.push(()=>state.estoque.push({id:'est_'+Date.now()+'_'+(j+1)+'_'+Math.random().toString(36).slice(2,7),produto:novo.produto,produtoId:novo.produtoId,produtoChave:novo.produtoChave,categoria:novo.categoria,quantidade:Number(novo.quantidade),unidade:novo.unidade,valor:Number(novo.valorTotal),nota,fornecedor,dataNota:data,origem:'compras',compraId,compraItemId:novo.id}));
+   else if(novo.destino==='custo')alteracoes.push(()=>state.custos.push({data,descricao:novo.produto,categoria:novo.categoria,valor:Number(novo.valorTotal),safra:safraAtivaNome(),destino:'geral',fornecedor,nota,origem:'compras',compraId,compraItemId:novo.id}));
+   else throw new Error('Destino não reconhecido para '+novo.produto);
   }
   alteracoes.forEach(f=>f());Object.assign(compraAnterior,{nota,serie,fornecedor,cnpjFornecedor:cnpj,data,itens,valorTotal:total,titularId});
   await salvarEstado();compraEditandoId=null;apagarRascunhoCompra();alert('Nota atualizada sem duplicar a compra.'+(avisos.length?'\n\nAtenção: '+avisos.join('\n'):''));go('compras');return;
@@ -1757,7 +1766,11 @@ function estoqueRelacionadoEmUso(item){
 async function excluirEstoque(i){
  const item=(state.estoque||[])[i];if(!item)return alert('Item de estoque não encontrado.');
  if(estoqueRelacionadoEmUso(item))return alert('Este produto tem vínculo com aplicações ou tratamentos. Não pode ser excluído diretamente. Revise os lançamentos antes.');
- if(item.compraId)return alert('Este item foi lançado por Compras. Para manter a nota e o estoque consistentes, faça a correção em Compras.');
+ if(item.compraId){
+  const compra=(state.compras||[]).find(c=>String(c.id)===String(item.compraId));
+  if(compra)return alert('Esta entrada pertence a uma compra existente. Não é possível excluí-la isoladamente, pois a nota continuaria registrando o produto.');
+  if(!confirm('Esta entrada de '+(item.produto||'')+' está vinculada a uma compra que não existe mais.\n\nExcluir SOMENTE esta entrada órfã do estoque? Verifique antes que a quantidade esteja inteira disponível.'))return;
+ }
  if(!confirm('Excluir a entrada de estoque '+(item.produto||'')+'?'))return;
  const anterior=JSON.stringify(state);
  try{marcarExcluido('estoque',item);state.estoque.splice(i,1);await salvarEstado();render()}
