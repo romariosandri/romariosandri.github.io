@@ -1650,8 +1650,23 @@ function adicionarLotePlantio(id='',q=''){
  const old=(state.plantio||[]).find(p=>String(p.id)===String(editId));
  const usados=new Set(lotesDoPlantio(old).map(x=>x.tratamentoId));
  const options=(state.tratamentosSementes||[]).filter(t=>Number(t.saldo||0)>0||usados.has(String(t.id))||String(t.id)===String(id)).map(t=>`<option value="${esc(t.id)}" ${String(t.id)===String(id)?'selected':''}>${esc(t.nome)} — ${Number(t.saldo||0).toLocaleString('pt-BR')} ${unidadeTratamentoLabel(t)} em saldo</option>`).join('');
- const div=document.createElement('div');div.className='plantio-lote-linha';div.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0';div.innerHTML=`<select class="plantio-lote-id" style="flex:2;min-width:170px" onchange="previewCustoPlantio()"><option value="">Selecione o lote</option>${options}</select><input class="plantio-lote-q" style="flex:1;min-width:100px" type="number" min="0" step="0.0001" placeholder="Quantidade" value="${Number(q)||''}" oninput="previewCustoPlantio()"><button type="button" class="secondary" onclick="this.parentElement.remove();previewCustoPlantio()">Remover</button>`;
+ const div=document.createElement('div');div.className='plantio-lote-linha';div.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0';div.innerHTML=`<select class="plantio-lote-id" style="flex:2;min-width:170px" onchange="previewCustoPlantio()"><option value="">Selecione o lote</option>${options}</select><input class="plantio-lote-q" style="flex:1;min-width:100px" type="number" min="0" step="0.0001" placeholder="Quantidade" value="${Number(q)||''}" oninput="previewCustoPlantio()"><button type="button" class="secondary" onclick="usarTodoSaldoLotePlantio(this)">Usar todo saldo</button><button type="button" class="secondary" onclick="this.parentElement.remove();previewCustoPlantio()">Remover</button>`;
  box.appendChild(div);previewCustoPlantio();
+}
+function usarTodoSaldoLotePlantio(botao){
+ const linha=botao.closest('.plantio-lote-linha');
+ const id=linha?.querySelector('.plantio-lote-id')?.value;
+ const campo=linha?.querySelector('.plantio-lote-q');
+ if(!id||!campo){alert('Selecione primeiro um lote de sementes.');return;}
+ const tratamento=(state.tratamentosSementes||[]).find(t=>String(t.id)===String(id));
+ if(!tratamento){alert('Lote não encontrado no estoque.');return;}
+ const editId=document.getElementById('plantioEditId')?.value;
+ const anterior=(state.plantio||[]).find(p=>String(p.id)===String(editId));
+ const quantidadeAnterior=lotesDoPlantio(anterior).filter(l=>String(l.tratamentoId)===String(id)).reduce((a,l)=>a+Number(l.quantidade||0),0);
+ const disponivel=Math.max(0,Number(tratamento.saldo||0)+quantidadeAnterior);
+ if(disponivel<=0){alert('Este lote não tem saldo disponível.');return;}
+ campo.value=String(Number(disponivel.toFixed(8)));
+ previewCustoPlantio();
 }
 function lerLotesPlantio(){const linhas=[...document.querySelectorAll('#plantioLotesLista .plantio-lote-linha')];const lotes=[];for(const linha of linhas){const id=linha.querySelector('.plantio-lote-id')?.value||'';const q=Number(linha.querySelector('.plantio-lote-q')?.value||0);if(!id&&!q)continue;if(!id||!Number.isFinite(q)||q<=0)throw Error('Selecione o tratamento e informe a quantidade positiva em cada lote.');if(lotes.some(x=>x.tratamentoId===id))throw Error('O mesmo lote foi selecionado duas vezes. Some as quantidades em uma única linha.');lotes.push({tratamentoId:id,quantidade:q})}return lotes}
 function calcularLotesPlantio(lotes,antigos=[]){let custo=0,kg=0;const detalhes=[];for(const l of lotes){const tr=(state.tratamentosSementes||[]).find(t=>String(t.id)===String(l.tratamentoId));if(!tr)throw Error('Um tratamento selecionado não foi encontrado.');const anterior=antigos.find(a=>String(a.tratamentoId)===String(l.tratamentoId));const disponivel=Number(tr.saldo||0)+Number(anterior?.quantidade||0);if(l.quantidade>disponivel+0.0001)throw Error('Saldo insuficiente no lote '+tr.nome+'. Disponível: '+disponivel.toLocaleString('pt-BR')+' '+unidadeTratamentoLabel(tr));const un=unidadeTratamentoLabel(tr);const peso=un==='Bag'?Number(tr.pesoBagKg||0):1;const k=l.quantidade*peso;const c=l.quantidade*custoUnitTratamento(tr);custo+=c;kg+=k;detalhes.push({...l,nome:tr.nome,unidade:un,custo:c,kg:k})}return {custo,kg,detalhes}}
